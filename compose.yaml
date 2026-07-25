@@ -3,9 +3,19 @@ services:
     image: ghcr.io/viren070/aiostreams:latest
     container_name: aiostreams
     restart: unless-stopped
+
     ports:
-      - 3000:3000
-    env_file:
-      - .env
+      - "${PORT:-3000}:3000"
+
+    environment:
+      BASE_URL: ${BASE_URL}
+      SECRET_KEY: ${SECRET_KEY}
+      DATABASE_URI: ${DATABASE_URI}
+      AIOSTREAMS_AUTH: ${AIOSTREAMS_AUTH}
+      TRUSTED_UUIDS: ${TRUSTED_UUIDS}
+
     volumes:
-      - ./data:/app/data
+      - aiostreams_data:/app/data
+
+volumes:
+  aiostreams_data:
