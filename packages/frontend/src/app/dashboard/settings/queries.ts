@@ -31,6 +31,10 @@ export interface SettingsUiHint {
   multiline?: boolean;
   /** For `number` fields - minimum allowed value (default: 0). */
   min?: number;
+  /** For `number` fields - maximum allowed value (default: unbounded). */
+  max?: number;
+  /** For `number` fields - step size (default: 1). */
+  step?: number;
 }
 
 export interface SettingsKey {

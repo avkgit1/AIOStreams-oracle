@@ -25,7 +25,7 @@ type DebridErrorCode =
   | 'UNSUPPORTED_MEDIA_TYPE'
   | 'NO_MATCHING_FILE'
   | 'TIMEOUT'
-  | 'MISSING_ARTICLES';
+  | 'DOWNLOAD_FAILED';
 
 type DebridErrorType =
   | 'api_error'
@@ -75,6 +75,29 @@ export class DebridError extends Error {
     }
   }
 }
+
+export const convertStatusCodeToError = (code: number): DebridError['code'] => {
+  switch (code) {
+    case 400:
+      return 'BAD_REQUEST';
+    case 401:
+      return 'UNAUTHORIZED';
+    case 403:
+      return 'FORBIDDEN';
+    case 404:
+      return 'NOT_FOUND';
+    case 429:
+      return 'TOO_MANY_REQUESTS';
+    case 500:
+      return 'INTERNAL_SERVER_ERROR';
+    case 501:
+      return 'NOT_IMPLEMENTED';
+    case 503:
+      return 'SERVICE_UNAVAILABLE';
+    default:
+      return 'UNKNOWN';
+  }
+};
 
 /**
  * Codes that are service-level failures (auth, quota, rate-limit) rather than

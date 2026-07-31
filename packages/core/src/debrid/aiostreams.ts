@@ -255,7 +255,7 @@ export class NativeUsenetService implements UsenetDebridService {
       throw new DebridError('nzb previously failed on all providers', {
         statusCode: 404,
         statusText: 'Not Found',
-        code: 'NOT_FOUND',
+        code: 'DOWNLOAD_FAILED',
         headers: {},
         body: null,
         type: 'api_error',

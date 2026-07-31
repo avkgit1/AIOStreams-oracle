@@ -347,7 +347,7 @@ async function failImport(
   return new DebridError(reason, {
     statusCode: 404,
     statusText: 'Not Found',
-    code: 'NO_MATCHING_FILE',
+    code: 'DOWNLOAD_FAILED',
     headers: {},
     body,
     type: 'api_error',

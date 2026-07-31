@@ -33,6 +33,10 @@ export interface RuntimeConfigUiOverride {
     | 'json';
   /** Minimum allowed value for `number` fields (default: 0). */
   min?: number;
+  /** Maximum allowed value for `number` fields (default: unbounded). */
+  max?: number;
+  /** Step size for `number` fields (default: 1). */
+  step?: number;
   /**
    * For `enum` - the values offered in the UI, when they are narrower than the
    * ones the schema accepts

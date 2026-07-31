@@ -53,6 +53,10 @@ export interface SettingsUiHint {
   multiline?: boolean;
   /** For `number` - minimum allowed value (default: 0). */
   min?: number;
+  /** For `number` - maximum allowed value (default: unbounded). */
+  max?: number;
+  /** For `number` - step size (default: 1). */
+  step?: number;
   /** Hidden from the generic settings page (managed by a bespoke editor). */
   hidden?: boolean;
 }
@@ -242,6 +246,8 @@ export function describeSettings(): Record<string, SettingsUiHint> {
       if (ui?.multiline) hint.multiline = true;
       if (ui?.mapWidth) hint.mapWidth = ui.mapWidth;
       if (ui?.min !== undefined) hint.min = ui.min;
+      if (ui?.max !== undefined) hint.max = ui.max;
+      if (ui?.step !== undefined) hint.step = ui.step;
       if (ui?.options) hint.options = [...ui.options];
       if (ui?.hidden) hint.hidden = true;
       out[key] = hint;
