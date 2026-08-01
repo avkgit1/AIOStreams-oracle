@@ -237,5 +237,5 @@ This project wouldn't be possible without the foundational work of many others i
 - [NzbDAV](https://github.com/nzbdav-dev/nzbdav) & [AltMount](https://github.com/javi11/altmount) integration inspired by [Sanket9225/UsenetStreamer](https://github.com/Sanket9225/UsenetStreamer/)
 - [sleeyax/stremio-easynews-addon](https://github.com/sleeyax/stremio-easynews-addon) for the project's initial structure
 - Custom formatter system inspired by and adapted from [diced/zipline](https://github.com/diced/zipline)
-- Stream Expression Language powered by [silentmatt/expr-eval](https://github.com/silentmatt/expr-eval)
-
+- Stream Expression Language powered by [silentmatt/expr-eval](https://github.com/silentmatt/expr-evcent
+- test
