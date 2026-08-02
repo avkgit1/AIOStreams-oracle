@@ -78,6 +78,11 @@ export interface StreamBandwidthBucket {
   bytes: number;
 }
 
+/** A bucket of one user's usage, for the per-user chart. */
+export interface StreamBandwidthUserBucket extends StreamBandwidthBucket {
+  username: string;
+}
+
 export type StreamBanScope = 'user' | 'target';
 
 export interface StreamBan {
@@ -136,8 +141,22 @@ interface BanDbRow {
 
 const HOUR_MS = 3_600_000;
 
+/**
+ * Rows per batched upsert. Well inside both dialects' bound-parameter limits at
+ * the widest table here (15 columns).
+ */
+const UPSERT_CHUNK = 200;
+
 function hourFloor(ts: number): number {
   return ts - (ts % HOUR_MS);
+}
+
+/**
+ * Floor an hourly row to its chart bucket. Modulo, not division: a bound width
+ * arrives as a float, so `(hour_ms / w) * w` would never truncate.
+ */
+function bucketExpr(bucketMs: number): SqlFragment {
+  return sql`(hour_ms - (hour_ms % ${bucketMs}))`;
 }
 
 function optionalNumber(v: number | string | null): number | undefined {
@@ -196,34 +215,38 @@ export class StreamSessionRepository {
    */
   static async upsertMany(rows: StreamSessionUpsert[]): Promise<void> {
     if (rows.length === 0) return;
-    await getDb().tx(async (tx) => {
-      for (const r of rows) {
-        await tx.exec(
-          sql`INSERT INTO stream_sessions
-                (id, transport, username, client_ip, target_key, filename, display_url,
-                 size, bytes_served, requests, started_at, last_seen_at, ended_at,
-                 end_reason, instance_id)
-              VALUES
-                (${r.id}, ${r.transport}, ${r.username}, ${r.clientIp ?? null},
-                 ${r.targetKey}, ${r.filename ?? null}, ${r.displayUrl ?? null},
-                 ${r.size}, ${r.bytesServed}, ${r.requests}, ${r.startedAt},
-                 ${r.lastSeenAt}, ${r.endedAt ?? null}, ${r.endReason ?? null},
-                 ${r.instanceId})
-              ON CONFLICT(id) DO UPDATE SET
-                -- Rewritten so tightening the IP recording policy also scrubs
-                -- rows that are still live.
-                client_ip = EXCLUDED.client_ip,
-                filename = EXCLUDED.filename,
-                display_url = EXCLUDED.display_url,
-                size = EXCLUDED.size,
-                bytes_served = EXCLUDED.bytes_served,
-                requests = EXCLUDED.requests,
-                last_seen_at = EXCLUDED.last_seen_at,
-                ended_at = EXCLUDED.ended_at,
-                end_reason = EXCLUDED.end_reason`
-        );
-      }
-    });
+    // One entry per id: an ON CONFLICT DO UPDATE cannot touch the same row
+    // twice within one statement.
+    const latest = new Map(rows.map((r) => [r.id, r]));
+    const values = [...latest.values()].map(
+      (r) => sql`(${r.id}, ${r.transport}, ${r.username}, ${r.clientIp ?? null},
+                  ${r.targetKey}, ${r.filename ?? null}, ${r.displayUrl ?? null},
+                  ${r.size}, ${r.bytesServed}, ${r.requests}, ${r.startedAt},
+                  ${r.lastSeenAt}, ${r.endedAt ?? null}, ${r.endReason ?? null},
+                  ${r.instanceId})`
+    );
+    const db = getDb();
+    for (let i = 0; i < values.length; i += UPSERT_CHUNK) {
+      await db.exec(
+        sql`INSERT INTO stream_sessions
+              (id, transport, username, client_ip, target_key, filename, display_url,
+               size, bytes_served, requests, started_at, last_seen_at, ended_at,
+               end_reason, instance_id)
+            VALUES ${join(values.slice(i, i + UPSERT_CHUNK))}
+            ON CONFLICT(id) DO UPDATE SET
+              -- Rewritten so tightening the IP recording policy also scrubs
+              -- rows that are still live.
+              client_ip = EXCLUDED.client_ip,
+              filename = EXCLUDED.filename,
+              display_url = EXCLUDED.display_url,
+              size = EXCLUDED.size,
+              bytes_served = EXCLUDED.bytes_served,
+              requests = EXCLUDED.requests,
+              last_seen_at = EXCLUDED.last_seen_at,
+              ended_at = EXCLUDED.ended_at,
+              end_reason = EXCLUDED.end_reason`
+      );
+    }
   }
 
   /** Active (live or idle) sessions across every replica, newest first. */
@@ -379,18 +402,45 @@ export class StreamSessionRepository {
 
   /** Fold served-byte deltas into their hourly buckets. */
   static async addBandwidth(deltas: StreamBandwidthDelta[]): Promise<void> {
-    const positive = deltas.filter((d) => d.bytes > 0);
-    if (positive.length === 0) return;
-    await getDb().tx(async (tx) => {
-      for (const d of positive) {
-        await tx.exec(
-          sql`INSERT INTO stream_bandwidth (hour_ms, username, transport, bytes)
-              VALUES (${hourFloor(d.atMs ?? Date.now())}, ${d.username}, ${d.transport}, ${d.bytes})
-              ON CONFLICT(hour_ms, username, transport) DO UPDATE SET
-                bytes = stream_bandwidth.bytes + EXCLUDED.bytes`
-        );
+    // Summed per bucket first: two deltas landing in the same hour would
+    // otherwise have one statement update the same row twice.
+    const folded = new Map<
+      string,
+      {
+        hour: number;
+        username: string;
+        transport: StreamTransport;
+        bytes: number;
       }
-    });
+    >();
+    for (const d of deltas) {
+      if (d.bytes <= 0) continue;
+      const hour = hourFloor(d.atMs ?? Date.now());
+      const key = JSON.stringify([hour, d.username, d.transport]);
+      const seen = folded.get(key);
+      if (seen) seen.bytes += d.bytes;
+      else {
+        folded.set(key, {
+          hour,
+          username: d.username,
+          transport: d.transport,
+          bytes: d.bytes,
+        });
+      }
+    }
+    if (folded.size === 0) return;
+    const values = [...folded.values()].map(
+      (d) => sql`(${d.hour}, ${d.username}, ${d.transport}, ${d.bytes})`
+    );
+    const db = getDb();
+    for (let i = 0; i < values.length; i += UPSERT_CHUNK) {
+      await db.exec(
+        sql`INSERT INTO stream_bandwidth (hour_ms, username, transport, bytes)
+            VALUES ${join(values.slice(i, i + UPSERT_CHUNK))}
+            ON CONFLICT(hour_ms, username, transport) DO UPDATE SET
+              bytes = stream_bandwidth.bytes + EXCLUDED.bytes`
+      );
+    }
   }
 
   /** Per-user, per-transport totals over `[sinceMs, now]`. */
@@ -423,7 +473,7 @@ export class StreamSessionRepository {
       bucket: number | string;
       bytes: number | string;
     }>(
-      sql`SELECT (hour_ms / ${bucketMs}) * ${bucketMs} AS bucket, SUM(bytes) AS bytes
+      sql`SELECT ${bucketExpr(bucketMs)} AS bucket, SUM(bytes) AS bytes
             FROM stream_bandwidth
            WHERE hour_ms >= ${sinceMs}
            GROUP BY bucket
@@ -431,6 +481,29 @@ export class StreamSessionRepository {
     );
     return rows.map((r) => ({
       bucketMs: Number(r.bucket),
+      bytes: Number(r.bytes ?? 0),
+    }));
+  }
+
+  /** The same buckets split per user, for the per-user chart view. */
+  static async bandwidthSeriesByUser(
+    sinceMs: number,
+    bucketMs: number
+  ): Promise<StreamBandwidthUserBucket[]> {
+    const rows = await getDb().query<{
+      bucket: number | string;
+      username: string;
+      bytes: number | string;
+    }>(
+      sql`SELECT ${bucketExpr(bucketMs)} AS bucket, username, SUM(bytes) AS bytes
+            FROM stream_bandwidth
+           WHERE hour_ms >= ${sinceMs}
+           GROUP BY bucket, username
+           ORDER BY bucket ASC`
+    );
+    return rows.map((r) => ({
+      bucketMs: Number(r.bucket),
+      username: r.username,
       bytes: Number(r.bytes ?? 0),
     }));
   }

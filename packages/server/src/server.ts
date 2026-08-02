@@ -24,6 +24,7 @@ import {
   startAnalytics,
   stopAnalytics,
   TaskManager,
+  instanceId,
   drainUsenetMetrics,
   pruneUsenetMetrics,
   requeueInterruptedInspects,
@@ -276,6 +277,9 @@ async function initialiseAuth() {
 async function start() {
   try {
     await initialiseDatabase();
+    // Before anything registers a task: it is the identity runs are recorded
+    // under.
+    TaskManager.setInstanceId(instanceId());
     await initialiseTemplates();
     logStartupInfo();
     await initialiseRedis();

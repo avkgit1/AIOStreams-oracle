@@ -2,13 +2,14 @@ import { Outlet, useLocation, useNavigate } from '@tanstack/react-router';
 import { motion } from 'motion/react';
 import { PageWrapper } from '@/components/shared/page-wrapper';
 import { SectionNavSelect } from '@/components/shared/section-nav-select';
+import { AnimatedNumber } from '@/components/shared/animated-number';
 import { formatSpeed } from '@/lib/format';
 import {
   STREAMS_SECTIONS,
   DEFAULT_STREAMS_SECTION,
   type StreamsSectionId,
 } from './sections';
-import { useLiveStreams } from './queries';
+import { useLiveStreams, liveFrameMs } from './queries';
 import { GenerateProxyLinkModal } from './_components/generate-link-modal';
 
 /**
@@ -22,7 +23,9 @@ export function StreamsLayout() {
   const { pathname } = useLocation();
   // Keeps the summary live on every section; the shared EventSource is
   // refcounted, so the Active page doesn't open a second one.
-  const summary = useLiveStreams().data?.summary;
+  const live = useLiveStreams();
+  const summary = live.data?.summary;
+  const frameMs = liveFrameMs(live.data);
   const current: StreamsSectionId =
     STREAMS_SECTIONS.find((s) => pathname === `/dashboard/streams/${s.id}`)
       ?.id ?? DEFAULT_STREAMS_SECTION;
@@ -33,9 +36,19 @@ export function StreamsLayout() {
         <div>
           <h2>Streams</h2>
           <p className="text-[--muted]">
-            {summary
-              ? `${summary.streaming} streaming · ${summary.paused + summary.idle} paused · ${formatSpeed(summary.totalBytesPerSec)}`
-              : 'Everything being served through the proxy and the usenet engine'}
+            {summary ? (
+              <>
+                {summary.streaming} streaming · {summary.paused + summary.idle}{' '}
+                paused ·{' '}
+                <AnimatedNumber
+                  value={summary.totalBytesPerSec}
+                  format={formatSpeed}
+                  durationSec={frameMs / 1000}
+                />
+              </>
+            ) : (
+              'Everything being served through the proxy and the usenet engine'
+            )}
           </p>
         </div>
         <GenerateProxyLinkModal />

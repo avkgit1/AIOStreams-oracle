@@ -103,6 +103,11 @@ export interface BandwidthOverview {
     connectionLimit: number;
   }>;
   series: Array<{ bucketMs: number; bytes: number }>;
+  seriesByUser: Array<{
+    username: string;
+    aggregated?: boolean;
+    series: Array<{ bucketMs: number; bytes: number }>;
+  }>;
   globalLimit: number;
   periodTotal: number;
 }

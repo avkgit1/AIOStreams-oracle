@@ -1,5 +1,6 @@
 import {
   StreamSessionRepository,
+  type StreamBandwidthBucket,
   type StreamBandwidthRollup,
   type StreamTransport,
 } from '../db/repositories/stream-sessions.js';
@@ -43,16 +44,27 @@ export function currentPeriodStart(now = Date.now()): number {
   return start.getTime();
 }
 
-/** `sinceMs` and chart bucket width for a dashboard window. */
+function floorTo(ts: number, width: number): number {
+  return ts - (ts % width);
+}
+
+/**
+ * `sinceMs` and chart bucket width for a dashboard window. The rolling windows
+ * start on a bucket boundary so the axis carries whole buckets only; `30d`
+ * cannot, being the accounting period the caps are measured against.
+ */
 export function resolveBandwidthWindow(
   window: BandwidthWindow,
   now = Date.now()
 ): { sinceMs: number; bucketMs: number } {
   switch (window) {
     case '24h':
-      return { sinceMs: now - DAY_MS, bucketMs: HOUR_MS };
+      return {
+        sinceMs: floorTo(now, HOUR_MS) - 23 * HOUR_MS,
+        bucketMs: HOUR_MS,
+      };
     case '7d':
-      return { sinceMs: now - 7 * DAY_MS, bucketMs: 6 * HOUR_MS };
+      return { sinceMs: floorTo(now, DAY_MS) - 6 * DAY_MS, bucketMs: DAY_MS };
     case '30d':
     default:
       // The accounting period, not a fixed 30 days.
@@ -127,6 +139,56 @@ export function globalBandwidthLimit(): number {
   return appConfig.streams.bandwidth.limits[GLOBAL_LIMIT_KEY] ?? 0;
 }
 
+/** Lines the per-user chart stays readable with; the rest fold into one. */
+const MAX_USER_SERIES = 7;
+
+/** One user's line on the per-user chart. */
+export interface BandwidthUserSeries {
+  /** Empty both for unidentified streams and for the aggregate line. */
+  username: string;
+  /** Set on the line folding everyone past {@link MAX_USER_SERIES}. */
+  aggregated?: boolean;
+  series: StreamBandwidthBucket[];
+}
+
+/**
+ * Split the bucketed series per user, heaviest first. Buckets stay sparse; the
+ * chart densifies them. The fold gets a container of its own rather than a
+ * reserved username, since every string is a name someone could hold.
+ */
+function foldUserSeries(
+  buckets: Array<{ bucketMs: number; username: string; bytes: number }>,
+  ranked: Array<{ username: string }>
+): BandwidthUserSeries[] {
+  const named = ranked.slice(0, MAX_USER_SERIES).map((u) => u.username);
+  const keep = new Set(named);
+  const byUser = new Map<string, Map<number, number>>();
+  const others = new Map<number, number>();
+  for (const b of buckets) {
+    let line = others;
+    if (keep.has(b.username)) {
+      line = byUser.get(b.username) ?? new Map<number, number>();
+      byUser.set(b.username, line);
+    }
+    line.set(b.bucketMs, (line.get(b.bucketMs) ?? 0) + b.bytes);
+  }
+  const toSeries = (line: Map<number, number>): StreamBandwidthBucket[] =>
+    [...line.entries()]
+      .map(([bucket, bytes]) => ({ bucketMs: bucket, bytes }))
+      .sort((a, b) => a.bucketMs - b.bucketMs);
+
+  const out: BandwidthUserSeries[] = named
+    .filter((username) => byUser.has(username))
+    .map((username) => ({
+      username,
+      series: toSeries(byUser.get(username)!),
+    }));
+  if (others.size > 0) {
+    out.push({ username: '', aggregated: true, series: toSeries(others) });
+  }
+  return out;
+}
+
 /** Per-user and per-transport totals for the dashboard. */
 export async function bandwidthBreakdown(
   window: BandwidthWindow,
@@ -137,12 +199,14 @@ export async function bandwidthBreakdown(
   total: number;
   byTransport: Record<StreamTransport, number>;
   byUser: Array<{ username: string; bytes: number }>;
-  series: Array<{ bucketMs: number; bytes: number }>;
+  series: StreamBandwidthBucket[];
+  seriesByUser: BandwidthUserSeries[];
 }> {
   const { sinceMs, bucketMs } = resolveBandwidthWindow(window, now);
-  const [rows, series] = await Promise.all([
+  const [rows, series, userBuckets] = await Promise.all([
     StreamSessionRepository.bandwidthByUser(sinceMs),
     StreamSessionRepository.bandwidthSeries(sinceMs, bucketMs),
+    StreamSessionRepository.bandwidthSeriesByUser(sinceMs, bucketMs),
   ]);
   const byTransport: Record<StreamTransport, number> = { usenet: 0, proxy: 0 };
   const perUser = new Map<string, number>();
@@ -152,14 +216,16 @@ export async function bandwidthBreakdown(
     perUser.set(r.username, (perUser.get(r.username) ?? 0) + r.bytes);
     total += r.bytes;
   }
+  const byUser = [...perUser.entries()]
+    .map(([username, bytes]) => ({ username, bytes }))
+    .sort((a, b) => b.bytes - a.bytes);
   return {
     sinceMs,
     bucketMs,
     total,
     byTransport,
-    byUser: [...perUser.entries()]
-      .map(([username, bytes]) => ({ username, bytes }))
-      .sort((a, b) => b.bytes - a.bytes),
+    byUser,
     series,
+    seriesByUser: foldUserSeries(userBuckets, byUser),
   };
 }

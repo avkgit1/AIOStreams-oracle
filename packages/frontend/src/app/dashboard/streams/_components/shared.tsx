@@ -1,5 +1,6 @@
 import React from 'react';
-import { BiCloudDownload, BiNetworkChart } from 'react-icons/bi';
+import { BiCloudDownload, BiLayer, BiNetworkChart } from 'react-icons/bi';
+import { Tooltip } from '@/components/ui/tooltip';
 import { cn } from '@/components/ui/core/styling';
 import type { StreamTransport } from '../queries';
 
@@ -55,6 +56,25 @@ export function Pill({
   className?: string;
 }) {
   return <span className={cn(PILL_CLASS, className)}>{children}</span>;
+}
+
+/**
+ * Range reads open on a session right now. Reads fold into one row, so this is
+ * the only place a pile-up shows.
+ */
+export function ActiveReadsPill({ reads }: { reads: number }) {
+  return (
+    <Tooltip
+      trigger={
+        <Pill className="border-amber-500/40 bg-amber-500/10 text-amber-300">
+          <BiLayer />
+          {reads}
+        </Pill>
+      }
+    >
+      {reads} range requests open at once — a player normally holds one.
+    </Tooltip>
+  );
 }
 
 /**

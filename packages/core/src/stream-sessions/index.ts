@@ -27,6 +27,7 @@ export {
   refreshBandwidthUsage,
   resolveBandwidthWindow,
   userBandwidthLimit,
+  type BandwidthUserSeries,
   type BandwidthWindow,
 } from './bandwidth.js';
 export {
@@ -43,3 +44,4 @@ export {
   type StreamBandwidthOverview,
 } from './service.js';
 export { proxyTargetKey, usenetTargetKey } from './target-key.js';
+export { instanceId } from './instance-id.js';

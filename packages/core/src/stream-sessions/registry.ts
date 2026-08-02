@@ -58,6 +58,13 @@ export const STALE_SESSION_MS = 24 * 60 * 60_000;
  */
 const STUCK_READ_MS = 6 * 60 * 60_000;
 
+/**
+ * How often the caches admission reads are refreshed while nothing is
+ * streaming. The flush itself runs far more often to keep live sessions
+ * current, which with none of them is pure query load.
+ */
+const IDLE_REFRESH_MS = 60_000;
+
 /** Raised on a reader whose session was force-stopped. */
 export class StreamStoppedError extends Error {
   readonly code = 'STREAM_STOPPED';
@@ -93,6 +100,8 @@ interface Session {
   /** Read the progress bar tracks; players hold one at a time. */
   newestReadId: number;
   emaBytesPerSec: number;
+  /** Bytes seen since the rate last advanced. */
+  unratedBytes: number;
   lastChunkAt: number;
   /** Needs writing on the next flush. */
   dirty: boolean;
@@ -130,6 +139,7 @@ export class StreamRegistry {
   /** Ended sessions still to be written out. */
   private finalised: Session[] = [];
   private readSeq = 0;
+  private lastRefreshAt = 0;
 
   readonly instanceId = instanceId();
 
@@ -184,6 +194,7 @@ export class StreamRegistry {
       reads: new Map(),
       newestReadId: 0,
       emaBytesPerSec: 0,
+      unratedBytes: 0,
       lastChunkAt: now,
       dirty: true,
     };
@@ -230,6 +241,12 @@ export class StreamRegistry {
     session.reads.set(read.id, read);
     session.newestReadId = read.id;
     session.requests++;
+    // A quiet stretch is a pause, not a slow transfer, so the rate resumes from
+    // this read rather than averaging the gap in and reading near zero.
+    if (now - session.lastChunkAt > ACTIVITY_WINDOW_MS) {
+      session.lastChunkAt = now;
+      session.unratedBytes = 0;
+    }
     session.lastSeenAt = now;
     session.dirty = true;
     if (input.size && !session.size) session.size = input.size;
@@ -250,10 +267,13 @@ export class StreamRegistry {
         session.lastSeenAt = at;
         session.dirty = true;
         read.bytes += bytes;
+        session.unratedBytes += bytes;
         if (dtMs > 0) {
           const w = Math.exp(-dtMs / RATE_TAU_MS);
           session.emaBytesPerSec =
-            session.emaBytesPerSec * w + (bytes / dtMs) * 1000 * (1 - w);
+            session.emaBytesPerSec * w +
+            (session.unratedBytes / dtMs) * 1000 * (1 - w);
+          session.unratedBytes = 0;
           session.lastChunkAt = at;
         }
       },
@@ -490,6 +510,12 @@ export class StreamRegistry {
         'failed to persist stream sessions; retrying on the next flush'
       );
     }
+
+    const idle = this.byKey.size === 0 && upserts.length === 0;
+    if (idle && now - this.lastRefreshAt < IDLE_REFRESH_MS) {
+      return { written, ended };
+    }
+    this.lastRefreshAt = now;
 
     await Promise.all([refreshStreamBans(), refreshBandwidthUsage(now)]);
     this.enforceBans();

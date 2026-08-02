@@ -27,7 +27,13 @@ import {
   useStopUserStreams,
   type LiveStreamSession,
 } from '../queries';
-import { ClientIpPill, Pill, TransportBadge, displayUser } from './shared';
+import {
+  ActiveReadsPill,
+  ClientIpPill,
+  Pill,
+  TransportBadge,
+  displayUser,
+} from './shared';
 import type { BlockTarget } from './block-modal';
 
 /** Progress = (range start + bytes of the current read) / size, clamped. */
@@ -92,15 +98,18 @@ export function StreamRow({
 
   return (
     <div className="space-y-1.5 rounded-lg border border-[--border] bg-[--paper] p-3">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
         <TransportBadge transport={stream.transport} />
+        {stream.activeReads > 1 && (
+          <ActiveReadsPill reads={stream.activeReads} />
+        )}
         <span
-          className="min-w-0 flex-1 truncate text-sm font-medium"
+          className="order-last w-full min-w-0 truncate text-sm font-medium sm:order-none sm:w-auto sm:flex-1"
           title={label(stream)}
         >
           {label(stream)}
         </span>
-        <span className="shrink-0 text-xs tabular-nums text-[--muted]">
+        <span className="ml-auto shrink-0 text-xs tabular-nums text-[--muted]">
           {streaming ? (
             <AnimatedNumber
               value={stream.bytesPerSec}

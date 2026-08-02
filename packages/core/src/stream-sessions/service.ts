@@ -13,6 +13,7 @@ import {
   globalBandwidthLimit,
   refreshBandwidthUsage,
   userBandwidthLimit,
+  type BandwidthUserSeries,
   type BandwidthWindow,
 } from './bandwidth.js';
 import { connectionLimitFor, globalConnectionLimit } from './limits.js';
@@ -186,6 +187,8 @@ export interface StreamBandwidthOverview {
     connectionLimit: number;
   }>;
   series: Array<{ bucketMs: number; bytes: number }>;
+  /** The same buckets split per user, capped and folded for the chart. */
+  seriesByUser: BandwidthUserSeries[];
   globalLimit: number;
   /** Bytes served this accounting period, which is what caps measure. */
   periodTotal: number;
@@ -215,6 +218,7 @@ export async function getBandwidthOverview(
       connectionLimit: connectionLimitFor(u.username),
     })),
     series: breakdown.series,
+    seriesByUser: breakdown.seriesByUser,
     globalLimit: globalBandwidthLimit(),
     periodTotal: period ? period.total : breakdown.total,
   };

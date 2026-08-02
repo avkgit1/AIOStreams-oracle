@@ -1,12 +1,34 @@
 import React from 'react';
 import { Card } from '@/components/ui/card';
-import { AreaChart, Stat } from '@/components/ui/charts';
+import {
+  AreaChart,
+  CHART_COLORS,
+  LineChart,
+  Stat,
+  type Series,
+} from '@/components/ui/charts';
 import { Tooltip } from '@/components/ui/tooltip';
 import { cn } from '@/components/ui/core/styling';
 import { DashboardQueryBoundary } from '@/components/shared/dashboard-query-boundary';
 import { formatBytes, formatPercent } from '@/lib/format';
-import { useBandwidth, type BandwidthWindow } from './queries';
+import {
+  useBandwidth,
+  type BandwidthOverview,
+  type BandwidthWindow,
+} from './queries';
 import { SegmentedControl, displayUser } from './_components/shared';
+
+const DAY_MS = 86_400_000;
+
+/** Guard against an unexpected bucket width turning the fill into a long loop. */
+const MAX_BUCKETS = 400;
+
+type ChartView = 'total' | 'user';
+
+const VIEWS: Array<{ value: ChartView; label: string }> = [
+  { value: 'total', label: 'Total' },
+  { value: 'user', label: 'By user' },
+];
 
 /**
  * The widest window is the accounting period, so its label follows the period
@@ -22,13 +44,48 @@ function windowOptions(
   ];
 }
 
+// Day buckets are floored against the epoch, so they are UTC days
+const dayFmt = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+  timeZone: 'UTC',
+});
+const fullDayFmt = new Intl.DateTimeFormat(undefined, {
+  dateStyle: 'medium',
+  timeZone: 'UTC',
+});
+const fullTimeFmt = new Intl.DateTimeFormat(undefined, {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+});
+
+/** Terse axis label; the tooltip carries the full date. */
 function bucketLabel(ms: number, bucketMs: number): string {
   const d = new Date(ms);
-  const p = (n: number) => String(n).padStart(2, '0');
-  if (bucketMs < 86_400_000) {
-    return `${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}h`;
+  if (bucketMs < DAY_MS) return `${String(d.getHours()).padStart(2, '0')}:00`;
+  return dayFmt.format(d);
+}
+
+function bucketTooltip(ms: number, bucketMs: number): string {
+  return bucketMs < DAY_MS
+    ? fullTimeFmt.format(new Date(ms))
+    : fullDayFmt.format(new Date(ms));
+}
+
+/**
+ * Every bucket boundary in the window, empty ones included. The rollups only
+ * hold buckets that saw traffic, so charting them directly draws a quiet
+ * stretch as one step.
+ */
+function windowBuckets(d: BandwidthOverview): number[] {
+  const width = d.bucketMs > 0 ? d.bucketMs : DAY_MS;
+  const first = Math.floor(d.sinceMs / width) * width;
+  const last = Math.floor(d.generatedAt / width) * width;
+  const out: number[] = [];
+  for (let t = first; t <= last && out.length < MAX_BUCKETS; t += width) {
+    out.push(t);
   }
-  return `${p(d.getMonth() + 1)}/${p(d.getDate())}`;
+  return out;
 }
 
 /** Usage against a cap, or a plain total when the cap is disabled. */
@@ -61,19 +118,41 @@ function UsageBar({ used, limit }: { used: number; limit: number }) {
  */
 export function StreamsBandwidthPage() {
   const [window, setWindow] = React.useState<BandwidthWindow>('30d');
+  const [view, setView] = React.useState<ChartView>('total');
   const query = useBandwidth(window);
   const data = query.data;
   const monthly = data?.periodMode === 'monthly';
   const windows = windowOptions(monthly);
 
-  const chartData = React.useMemo(
-    () =>
-      (data?.series ?? []).map((b) => ({
-        t: bucketLabel(b.bucketMs, data?.bucketMs ?? 86_400_000),
-        bytes: b.bytes,
-      })),
-    [data]
-  );
+  // One row per bucket feeds both views, so switching does not move the ticks.
+  const chart = React.useMemo(() => {
+    if (!data) return { rows: [], userSeries: [] as Series[] };
+    const buckets = windowBuckets(data);
+    const total = new Map(data.series.map((b) => [b.bucketMs, b.bytes]));
+    // Recharts keys into the datum, and a username is not a safe object key.
+    const userSeries: Series[] = data.seriesByUser.map((u, i) => ({
+      key: `u${i}`,
+      label: u.aggregated ? 'Others' : displayUser(u.username),
+      color: u.aggregated
+        ? 'var(--muted)'
+        : CHART_COLORS[i % CHART_COLORS.length],
+    }));
+    const perUser = data.seriesByUser.map(
+      (u) => new Map(u.series.map((b) => [b.bucketMs, b.bytes]))
+    );
+    const rows = buckets.map((t) => {
+      const row: Record<string, string | number> = {
+        t: bucketLabel(t, data.bucketMs),
+        at: bucketTooltip(t, data.bucketMs),
+        bytes: total.get(t) ?? 0,
+      };
+      perUser.forEach((line, i) => {
+        row[`u${i}`] = line.get(t) ?? 0;
+      });
+      return row;
+    });
+    return { rows, userSeries };
+  }, [data]);
 
   const periodLabel =
     monthly && data
@@ -151,19 +230,39 @@ export function StreamsBandwidthPage() {
             )}
 
             <Card className="p-4">
-              <h3 className="mb-3 text-sm font-semibold">Served over time</h3>
-              {chartData.length === 0 ? (
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold">Served over time</h3>
+                {chart.userSeries.length > 0 && (
+                  <SegmentedControl
+                    value={view}
+                    onChange={setView}
+                    options={VIEWS}
+                  />
+                )}
+              </div>
+              {d.total === 0 ? (
                 <p className="py-8 text-center text-sm text-[--muted]">
                   Nothing served in this window.
                 </p>
+              ) : view === 'user' && chart.userSeries.length > 0 ? (
+                <LineChart
+                  data={chart.rows}
+                  xKey="t"
+                  series={chart.userSeries}
+                  height={240}
+                  tooltipLabelKey="at"
+                  valueFormatter={(v) => formatBytes(Number(v))}
+                  yTickFormatter={(v) => formatBytes(Number(v))}
+                />
               ) : (
                 <AreaChart
-                  data={chartData}
+                  data={chart.rows}
                   xKey="t"
                   series={[
                     { key: 'bytes', label: 'Served', color: 'var(--brand)' },
                   ]}
                   height={240}
+                  tooltipLabelKey="at"
                   valueFormatter={(v) => formatBytes(Number(v))}
                   yTickFormatter={(v) => formatBytes(Number(v))}
                 />

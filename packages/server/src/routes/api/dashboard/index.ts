@@ -774,16 +774,20 @@ router.delete('/users', async (req, res) => {
 // Tasks — registry + manual trigger
 // =============================================================================
 
-router.get('/tasks', (_req, res) => {
-  res
-    .status(200)
-    .json(
-      createResponse({ success: true, data: { tasks: TaskManager.list() } })
-    );
+router.get('/tasks', async (_req, res) => {
+  res.status(200).json(
+    createResponse({
+      success: true,
+      data: {
+        tasks: await TaskManager.list(),
+        instanceId: TaskManager.instanceId,
+      },
+    })
+  );
 });
 
 router.post('/tasks/:id/run', async (req, res) => {
-  const task = TaskManager.list().find((t) => t.id === req.params.id);
+  const task = TaskManager.get(req.params.id);
   if (!task)
     return res.status(404).json(
       createResponse({
@@ -812,7 +816,7 @@ router.post('/tasks/:id/run', async (req, res) => {
   const username =
     (req as { user?: { username?: string } }).user?.username ?? 'admin';
   logger.info({ task: task.id, username }, 'task run requested');
-  const result = await TaskManager.runNow(task.id);
+  const result = await TaskManager.requestRun(task.id);
   if (!result.ok) {
     return res.status(500).json(
       createResponse({
@@ -921,7 +925,7 @@ router.post('/cache/clear', async (req, res) => {
     );
   }
   logger.warn({ username }, 'all cache cleared');
-  const result = await TaskManager.runNow('clear-all-cache');
+  const result = await TaskManager.requestRun('clear-all-cache');
   res
     .status(result.ok ? 200 : 500)
     .json(createResponse({ success: result.ok, data: result }));
