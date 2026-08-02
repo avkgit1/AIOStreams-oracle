@@ -346,6 +346,7 @@ export class NativeUsenetService implements UsenetDebridService {
       innerPath: selected.path,
       filename: chosenFilename,
       releaseKey: playbackInfo.releaseKey,
+      owner: this.owner,
     });
 
     const url = `${appConfig.bootstrap.baseUrl}/api/v1/usenet/stream/${token}`;

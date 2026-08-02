@@ -46,7 +46,13 @@ export interface SettingsUiHint {
   /** For `enum` - the allowed string values. */
   options?: string[];
   /** For `map` - the value cell kind. */
-  mapValueKind?: 'string' | 'number' | 'boolean' | 'numberOrBool' | 'json';
+  mapValueKind?:
+    | 'string'
+    | 'number'
+    | 'boolean'
+    | 'numberOrBool'
+    | 'size'
+    | 'json';
   /** For `map` - column ratio (default `equal`). */
   mapWidth?: 'equal' | 'wide-key' | 'wide-value';
   /** For `string` - render as textarea. */
@@ -244,6 +250,7 @@ export function describeSettings(): Record<string, SettingsUiHint> {
           : classify(schema as AnyZod);
       if (ui?.kind) hint.kind = ui.kind;
       if (ui?.multiline) hint.multiline = true;
+      if (ui?.mapValueKind) hint.mapValueKind = ui.mapValueKind;
       if (ui?.mapWidth) hint.mapWidth = ui.mapWidth;
       if (ui?.min !== undefined) hint.min = ui.min;
       if (ui?.max !== undefined) hint.max = ui.max;

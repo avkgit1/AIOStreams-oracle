@@ -23,7 +23,13 @@ export interface SettingsUiHint {
    *  `ui.kind` override when the zod union doesn't classify cleanly. */
   kind: SettingsUiKind;
   options?: string[];
-  mapValueKind?: 'string' | 'number' | 'boolean' | 'numberOrBool' | 'json';
+  mapValueKind?:
+    | 'string'
+    | 'number'
+    | 'boolean'
+    | 'numberOrBool'
+    | 'size'
+    | 'json';
   /** Hint for `KeyValueListField` column ratio (default `equal`). */
   mapWidth?: 'equal' | 'wide-key' | 'wide-value';
   /** When `kind === 'string'`, render a textarea instead of single-line input

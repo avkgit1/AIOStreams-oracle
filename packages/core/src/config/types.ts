@@ -19,6 +19,17 @@ export interface RuntimeConfigUiOverride {
   /** Column ratio for `KeyValueListField`. */
   mapWidth?: 'equal' | 'wide-key' | 'wide-value';
   /**
+   * Value cell kind for `KeyValueListField`, when the auto-classifier can't
+   * infer it (e.g. a record of env-coerced `number | string` size values).
+   */
+  mapValueKind?:
+    | 'string'
+    | 'number'
+    | 'boolean'
+    | 'numberOrBool'
+    | 'size'
+    | 'json';
+  /**
    * Force a specific UI kind, overriding the auto-classifier.
    */
   kind?:

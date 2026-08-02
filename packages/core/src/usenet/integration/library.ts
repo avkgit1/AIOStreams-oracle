@@ -998,7 +998,9 @@ export async function addUsenetNzb(opts: {
  */
 export async function mintUsenetLibraryToken(
   nzbHash: string,
-  fileSel?: string
+  fileSel?: string,
+  /** Dashboard user the resulting stream is attributed to. */
+  owner?: string
 ): Promise<{ token: string; filename: string } | undefined> {
   const entry = (await UsenetLibraryRepository.getResolved(nzbHash))?.entry;
   if (!entry?.nzbUrl) return undefined;
@@ -1028,6 +1030,7 @@ export async function mintUsenetLibraryToken(
     fileIndex: file.index,
     innerPath: file.path,
     filename,
+    owner,
   });
   return { token, filename };
 }
