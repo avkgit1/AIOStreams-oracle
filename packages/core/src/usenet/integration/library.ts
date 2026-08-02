@@ -102,7 +102,7 @@ async function saveLocalNzb(hash: string, xml: string | Buffer): Promise<void> {
  */
 const PARSED_NZB_TTL_MS = 5 * 60_000;
 const PARSED_NZB_MAX_ENTRIES = 8;
-const PARSED_NZB_MAX_TOTAL_SEGMENTS = 600_000;
+const PARSED_NZB_MAX_TOTAL_SEGMENTS = 150_000;
 const PARSED_NZB_MAX_ALIASES = 64;
 const parsedNzbCache = new Map<
   string,

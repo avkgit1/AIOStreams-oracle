@@ -283,10 +283,10 @@ async function start() {
     await initialiseTemplates();
     logStartupInfo();
     await initialiseRedis();
-    initialiseAnimeDatabase();
-    initialiseSeaDexDataset();
-    initialiseSceneMappingDataset();
-    initialiseIdMappingDataset();
+    await initialiseAnimeDatabase();
+    await initialiseSeaDexDataset();
+    await initialiseSceneMappingDataset();
+    await initialiseIdMappingDataset();
     RegexAccess.initialise();
     SelAccess.initialise();
     await initialiseProwlarr();
