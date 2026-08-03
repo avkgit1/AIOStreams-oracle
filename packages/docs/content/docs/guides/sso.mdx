@@ -77,20 +77,24 @@ Every setting lives under **Dashboard → Settings → SSO / OIDC** and applies 
 
 For example, `https://aiostreams.example.com/api/v1/auth/oidc/callback`. It must match exactly, including the scheme.
 
+Registering produces the **client ID** and **client secret** you will need in the next step.
+Some may let you choose a client ID, while others generate one for you.
+Whatever your provider ends up showing is the value AIOStreams needs.
+
 </Step>
 <Step>
 
-**Point AIOStreams at the provider.** Only four settings are required. The issuer is the root URL; `/.well-known/openid-configuration` is discovered automatically.
+**Point AIOStreams at the provider.** Only four settings are required. The issuer is the provider's root URL; `/.well-known/openid-configuration` is discovered automatically.
 
 <Tabs items={['Dashboard', 'Environment']}>
 <Tab value="Dashboard">
 
-| Setting          | Value                         |
-| ---------------- | ----------------------------- |
-| Enable SSO login | on                            |
-| Issuer URL       | `https://auth.example.com`    |
-| Client ID        | `aiostreams`                  |
-| Client secret    | the secret from your provider |
+| Setting          | Value                                                     |
+| ---------------- | --------------------------------------------------------- |
+| Enable SSO login | on                                                        |
+| Issuer URL       | your provider's root URL, e.g. `https://auth.example.com` |
+| Client ID        | the client ID from step 1                                 |
+| Client secret    | the client secret from step 1                             |
 
 </Tab>
 <Tab value="Environment">
@@ -98,8 +102,8 @@ For example, `https://aiostreams.example.com/api/v1/auth/oidc/callback`. It must
 ```bash
 AIOSTREAMS_OIDC_ENABLED=true
 AIOSTREAMS_OIDC_ISSUER=https://auth.example.com
-AIOSTREAMS_OIDC_CLIENT_ID=aiostreams
-AIOSTREAMS_OIDC_CLIENT_SECRET=<secret>
+AIOSTREAMS_OIDC_CLIENT_ID=<client-id>
+AIOSTREAMS_OIDC_CLIENT_SECRET=<client-secret>
 ```
 
 </Tab>
