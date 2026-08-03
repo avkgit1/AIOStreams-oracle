@@ -21,6 +21,8 @@ import {
   IdMappingDataset,
   ensureConfigAccessKey,
   warnLegacyAuthVarsIfNeeded,
+  warnMissingConfigPermission,
+  initialiseOidc,
   startAnalytics,
   stopAnalytics,
   TaskManager,
@@ -272,6 +274,8 @@ async function initialiseTemplates() {
 async function initialiseAuth() {
   await ensureConfigAccessKey();
   warnLegacyAuthVarsIfNeeded();
+  warnMissingConfigPermission();
+  await initialiseOidc();
 }
 
 async function start() {

@@ -1,6 +1,7 @@
 ﻿import express, { Express } from 'express';
 import {
   userApi,
+  profilesApi,
   healthApi,
   statusApi,
   formatApi,
@@ -147,6 +148,7 @@ if (appConfig.bootstrap.nodeEnv === 'development') {
 // API Routes
 const apiRouter = express.Router();
 apiRouter.use('/user', userApi);
+apiRouter.use('/profiles', profilesApi);
 apiRouter.use('/health', healthApi);
 apiRouter.use('/status', statusApi);
 apiRouter.use('/format', formatApi);

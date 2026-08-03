@@ -27,6 +27,7 @@ import {
   usenetSchema,
   streamsSchema,
   releaseBlocklistSchema,
+  oidcSchema,
 } from './schema/index.js';
 
 export const runtimeSchemas = {
@@ -50,6 +51,7 @@ export const runtimeSchemas = {
   usenet: usenetSchema,
   streams: streamsSchema,
   releaseBlocklist: releaseBlocklistSchema,
+  oidc: oidcSchema,
 } as const;
 
 export const runtimeKeyAliases: Record<string, string> = {

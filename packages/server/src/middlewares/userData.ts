@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
 import {
-  config as appConfig,
   createLogger,
   APIError,
   constants,
@@ -10,6 +9,8 @@ import {
   StremioTransformer,
   UserRepository,
   Env,
+  isConfigUuid,
+  resolveConfigAlias,
 } from '@aiostreams/core';
 import { syncUserDataUrls } from '../utils/syncUserData.js';
 
@@ -54,10 +55,8 @@ export const userDataMiddleware = async (
 
   // Second check - validate UUID format (simpler regex that just checks UUID format)
   let uuid: string | undefined;
-  const uuidRegex =
-    /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-  if (!uuidRegex.test(uuidOrAlias)) {
-    const alias = appConfig.api.aliasedConfigurations[uuidOrAlias];
+  if (!isConfigUuid(uuidOrAlias)) {
+    const alias = await resolveConfigAlias(uuidOrAlias);
     if (alias) {
       uuid = alias.uuid;
     } else {

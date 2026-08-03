@@ -57,6 +57,13 @@ export {
   type StreamBandwidthBucket,
   type StreamHistoryQuery,
 } from './repositories/stream-sessions.js';
+export {
+  ConfigProfileRepository,
+  resolveConfigAlias,
+  MAX_PROFILES_PER_OWNER,
+  type ConfigProfile,
+  type ConfigAliasTarget,
+} from './repositories/config-profiles.js';
 export * from './schemas.js';
 
 export { sql, raw, join, SqlFragment } from './sql.js';

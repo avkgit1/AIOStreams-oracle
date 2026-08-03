@@ -17,6 +17,7 @@ import {
   mergeConfigs,
   assertConfigAccessKey,
 } from '../../utils/index.js';
+import { ConfigProfileRepository } from './config-profiles.js';
 
 const APIError = constants.APIError;
 const logger = createLogger('users');
@@ -438,6 +439,13 @@ export class UserRepository {
                   config_salt = ${newConfigSalt},
                   updated_at = CURRENT_TIMESTAMP
               WHERE uuid = ${uuid}`
+        );
+        // Saved configurations hold the same blob as the install URL, so they
+        // break on the next password change unless rotated with it.
+        await ConfigProfileRepository.reencryptForUuid(
+          tx,
+          uuid,
+          newEncryptedPasswordToken
         );
       });
       logger.info(`Changed password for user ${uuid}`);
