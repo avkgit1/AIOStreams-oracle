@@ -25,6 +25,8 @@ const VALID_RESOURCES = [
   'streams',
 ];
 
+const RESOURCE_REGEX = new RegExp(`/(${VALID_RESOURCES.join('|')})`);
+
 interface UserDataParams {
   uuid?: string;
   encryptedPassword?: string;
@@ -45,9 +47,7 @@ export const userDataMiddleware = async (
     return;
   }
   // First check - validate path has two components followed by valid resource
-  const resourceRegex = new RegExp(`/(${VALID_RESOURCES.join('|')})`);
-
-  const resourceMatch = req.path.match(resourceRegex);
+  const resourceMatch = req.path.match(RESOURCE_REGEX);
   if (!resourceMatch) {
     next();
     return;

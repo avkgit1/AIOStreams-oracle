@@ -58,6 +58,10 @@ import {
   staticRateLimiter,
   internalMiddleware,
   stremioStreamRateLimiter,
+  stremioManifestRateLimiter,
+  stremioMetaRateLimiter,
+  stremioCatalogRateLimiter,
+  stremioSubtitleRateLimiter,
   requireSessionIfAuthRequired,
 } from './middlewares/index.js';
 
@@ -192,8 +196,8 @@ app.use(`/api/v${constants.API_VERSION}`, apiRouter);
 const stremioRouter = express.Router({ mergeParams: true });
 stremioRouter.use(corsMiddleware);
 // Public routes - no auth needed
-stremioRouter.use('/manifest.json', manifest);
-stremioRouter.use('/stream', stream);
+stremioRouter.use('/manifest.json', stremioManifestRateLimiter, manifest);
+stremioRouter.use('/stream', stremioStreamRateLimiter, stream);
 stremioRouter.use('/configure', requireSessionIfAuthRequired, configure);
 
 stremioRouter.use('/u', alias);
@@ -201,6 +205,11 @@ stremioRouter.use('/u', alias);
 // Protected routes with authentication
 const stremioAuthRouter = express.Router({ mergeParams: true });
 stremioAuthRouter.use(corsMiddleware);
+stremioAuthRouter.use('/manifest.json', stremioManifestRateLimiter);
+stremioAuthRouter.use('/stream', stremioStreamRateLimiter);
+stremioAuthRouter.use('/meta', stremioMetaRateLimiter);
+stremioAuthRouter.use('/catalog', stremioCatalogRateLimiter);
+stremioAuthRouter.use('/subtitles', stremioSubtitleRateLimiter);
 stremioAuthRouter.use(userDataMiddleware);
 stremioAuthRouter.use('/manifest.json', manifest);
 stremioAuthRouter.use('/stream', stream);
@@ -215,6 +224,8 @@ app.use('/stremio/:uuid/:encryptedPassword', stremioAuthRouter); // For authenti
 
 const chillLinkRouter = express.Router({ mergeParams: true });
 chillLinkRouter.use(corsMiddleware);
+chillLinkRouter.use('/manifest', stremioManifestRateLimiter);
+chillLinkRouter.use('/streams', stremioStreamRateLimiter);
 chillLinkRouter.use(userDataMiddleware);
 chillLinkRouter.use('/manifest', chillLinkManifest);
 chillLinkRouter.use('/streams', chillLinkStreams);
