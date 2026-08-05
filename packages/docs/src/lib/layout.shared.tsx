@@ -35,6 +35,11 @@ export function baseOptions(): BaseLayoutProps {
     githubUrl: `https://github.com/${gitConfig.user}/${gitConfig.repo}`,
     links: [
       {
+        type: 'main',
+        text: 'Changelog',
+        url: '/changelog',
+      },
+      {
         type: 'icon',
         text: 'Discord',
         url: 'https://discord.viren070.me',

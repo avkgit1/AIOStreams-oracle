@@ -5,6 +5,7 @@ import Script from 'next/script';
 import './global.css';
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://docs.aiostreams.viren070.me'),
   title: {
     template: '%s | AIOStreams',
     default: 'AIOStreams',
