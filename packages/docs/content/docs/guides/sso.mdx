@@ -84,7 +84,11 @@ Whatever your provider ends up showing is the value AIOStreams needs.
 </Step>
 <Step>
 
-**Point AIOStreams at the provider.** Only four settings are required. The issuer is the provider's root URL; `/.well-known/openid-configuration` is discovered automatically.
+**Point AIOStreams at the provider.** Only four settings are required. The issuer is usually the provider's root URL; `/.well-known/openid-configuration` is discovered automatically.
+
+<Callout type="warn">
+Copy the issuer exactly as your provider states it, **including any trailing slash**.
+</Callout>
 
 <Tabs items={['Dashboard', 'Environment']}>
 <Tab value="Dashboard">
@@ -450,17 +454,17 @@ and the usenet engine anyway.
 
 Failures return you to the login page with an `?error=` code and a toast. The precise cause is always in the server log.
 
-| Code                     | Meaning                                       | Usual fix                                                                                                                                          |
-| ------------------------ | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `oidc_disabled`          | SSO is off                                    | Turn on **Enable SSO login**                                                                                                                       |
-| `oidc_not_configured`    | Enabled without an issuer or client ID        | Set both                                                                                                                                           |
-| `oidc_discovery_failed`  | Provider unreachable                          | Check the issuer URL and that AIOStreams can resolve it                                                                                            |
-| `oidc_state_invalid`     | Login expired or the state cookie was missing | Retry; if it always happens, check that the browser is not blocking cookies                                                                        |
-| `oidc_denied`            | Provider refused the request                  | Usually the user cancelled consent, or the client is not authorised for them                                                                       |
-| `oidc_exchange_failed`   | Provider rejected the code                    | Check the client secret and that the redirect URI matches exactly                                                                                  |
-| `oidc_claims_invalid`    | No usable username claim                      | Check **Username claim** against what your provider emits. Google and other providers with no `preferred_username` need it set to `email` or `sub` |
-| `oidc_username_conflict` | Collides with a local user                    | Turn on **Link to local users by username** if they are the same person, otherwise set a **Username prefix**                                       |
-| `oidc_no_permissions`    | Nothing matched                               | Check **Group permissions**, and that the claim you are mapping is actually arriving                                                               |
+| Code                     | Meaning                                                               | Usual fix                                                                                                                                                                       |
+| ------------------------ | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `oidc_disabled`          | SSO is off                                                            | Turn on **Enable SSO login**                                                                                                                                                    |
+| `oidc_not_configured`    | Enabled without an issuer or client ID                                | Set both                                                                                                                                                                        |
+| `oidc_discovery_failed`  | Provider unreachable, or its issuer does not match the configured one | Check the issuer URL and that AIOStreams can resolve it. If the log says the issuer does not match, copy the issuer the provider reports verbatim, including any trailing slash |
+| `oidc_state_invalid`     | Login expired or the state cookie was missing                         | Retry; if it always happens, check that the browser is not blocking cookies                                                                                                     |
+| `oidc_denied`            | Provider refused the request                                          | Usually the user cancelled consent, or the client is not authorised for them                                                                                                    |
+| `oidc_exchange_failed`   | Provider rejected the code                                            | Check the client secret and that the redirect URI matches exactly                                                                                                               |
+| `oidc_claims_invalid`    | No usable username claim                                              | Check **Username claim** against what your provider emits. Google and other providers with no `preferred_username` need it set to `email` or `sub`                              |
+| `oidc_username_conflict` | Collides with a local user                                            | Turn on **Link to local users by username** if they are the same person, otherwise set a **Username prefix**                                                                    |
+| `oidc_no_permissions`    | Nothing matched                                                       | Check **Group permissions**, and that the claim you are mapping is actually arriving                                                                                            |
 
 For `oidc_no_permissions`, the log line records the username **and the values the provider actually sent** for the claim you are mapping. The two usual causes are an empty list because the `groups` scope was not requested, and a provider that sends no groups at all — see [Providers that have no groups](#providers-that-have-no-groups).
 
