@@ -10,6 +10,9 @@ import {
   isConfigUuid,
   resolveConfigAlias,
   UserRepository,
+  parseVariantSelector,
+  withVariantQuery,
+  VARIANT_QUERY_PARAM,
 } from '@aiostreams/core';
 import {
   applySeanimeManifestRuntimeConfig,
@@ -193,10 +196,17 @@ router.get(
     }
 
     // Pre-populate the manifestUrl field default with the user's Stremio manifest URL
-    const stremioManifestUrl = `${appConfig.bootstrap.baseUrl}/stremio/${uuid}/${encryptedPassword}/manifest.json`;
+    const variants = parseVariantSelector(req.query[VARIANT_QUERY_PARAM]);
+    const stremioManifestUrl = withVariantQuery(
+      `${appConfig.bootstrap.baseUrl}/stremio/${uuid}/${encryptedPassword}/manifest.json`,
+      variants
+    );
     applySeanimeManifestRuntimeConfig(manifest, {
-      manifestURI: `${appConfig.bootstrap.baseUrl}/seanime/${uuid}/${encryptedPassword}/extensions/${extensionId}.json`,
-      website: stremioManifestUrl.replace('/manifest.json', '/configure'),
+      manifestURI: withVariantQuery(
+        `${appConfig.bootstrap.baseUrl}/seanime/${uuid}/${encryptedPassword}/extensions/${extensionId}.json`,
+        variants
+      ),
+      website: `${appConfig.bootstrap.baseUrl}/stremio/${uuid}/${encryptedPassword}/configure`,
       baseUrl: appConfig.bootstrap.baseUrl,
       stremioManifestUrl,
     });

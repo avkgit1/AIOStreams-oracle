@@ -83,6 +83,7 @@ export class UserRepository {
     assertConfigAccessKey(config);
     config.trusted = false;
     config.ip = undefined;
+    config.activeVariants = undefined;
 
     let configToValidate: UserData = config;
     if (config.parentConfig?.uuid) {
@@ -240,6 +241,7 @@ export class UserRepository {
     decryptedConfig.trusted = isTrustedUuid(uuid);
     decryptedConfig.uuid = uuid;
     decryptedConfig.ip = undefined;
+    decryptedConfig.activeVariants = undefined;
     return applyMigrations(decryptedConfig);
   }
 
@@ -355,6 +357,7 @@ export class UserRepository {
     assertConfigAccessKey(config);
     config.trusted = isTrustedUuid(uuid);
     config.ip = undefined;
+    config.activeVariants = undefined;
 
     const db = getDb();
     const current = await db.maybeOne<UserRow>(

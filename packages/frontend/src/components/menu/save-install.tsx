@@ -9,6 +9,7 @@ import {
   CreateUserResponse,
 } from '@/lib/api';
 import { PageWrapper } from '@/components/shared/page-wrapper';
+import { cn } from '@/components/ui/core/styling';
 import { Alert } from '@/components/ui/alert';
 import { SettingsCard } from '../shared/settings-card';
 import { toast } from 'sonner';
@@ -357,6 +358,62 @@ function CompatibleClientLogos() {
   );
 }
 
+interface VariantSelectorProps {
+  variants: NonNullable<UserData['variants']>;
+  selected: string[];
+  onChange: (selected: string[]) => void;
+}
+
+function VariantSelector({
+  variants,
+  selected,
+  onChange,
+}: VariantSelectorProps) {
+  const toggle = (id: string) =>
+    onChange(
+      selected.includes(id)
+        ? selected.filter((value) => value !== id)
+        : [...selected, id]
+    );
+
+  const pill = (active: boolean) =>
+    cn(
+      'px-2.5 py-1 text-xs font-medium rounded-full border transition-colors',
+      active
+        ? 'bg-[--brand]/20 text-[--brand] border-[--brand]/50'
+        : 'bg-transparent text-[--muted] border-[--border] hover:bg-[--subtle]'
+    );
+
+  return (
+    <div className="w-full rounded-xl border border-gray-700 bg-gray-800/30 p-5 shadow-inner">
+      <h3 className="text-lg font-semibold text-white">Variant</h3>
+      <p className="text-sm text-[--muted] mt-1">
+        The links below install the selected variant. Each one appears as a
+        separate addon in your client; pick more than one to combine them.
+      </p>
+      <div className="flex flex-wrap gap-1.5 mt-4">
+        <button
+          type="button"
+          onClick={() => onChange([])}
+          className={pill(selected.length === 0)}
+        >
+          Base config
+        </button>
+        {variants.map((variant) => (
+          <button
+            key={variant.id}
+            type="button"
+            onClick={() => toggle(variant.id)}
+            className={pill(selected.includes(variant.id))}
+          >
+            {variant.name || variant.id}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface InstallCardProps {
   encodedManifest: string;
   manifestUrl: string;
@@ -374,12 +431,14 @@ interface InstallCardProps {
   nabIndexerDisabledReason?: string;
   disableSearchApiCard?: boolean;
   searchApiDisabledReason?: string;
+  variantSelector?: React.ReactNode;
 }
 
 function InstallCard({
   encodedManifest,
   manifestUrl,
   usingAlias,
+  variantSelector,
   onCopyManifestUrl,
   onOpenChillio,
   onOpenSeanime,
@@ -400,6 +459,7 @@ function InstallCard({
       description="Install your addon using your preferred method. If a reinstall is necessary, a pop-up will tell you — otherwise, you do not need to reinstall."
     >
       <div className="flex flex-col gap-6">
+        {variantSelector}
         <div className="w-full rounded-xl border border-gray-700 bg-gray-800/30 p-5 shadow-inner">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 lg:items-center">
             <div className="flex flex-col gap-4">
@@ -1322,6 +1382,7 @@ function Content() {
   const importMenuModal = useDisclosure(false);
   const [filterCredentialsInExport, setFilterCredentialsInExport] =
     React.useState(true);
+  const [selectedVariants, setSelectedVariants] = React.useState<string[]>([]);
   const chillLinkModal = useDisclosure(false);
   const seanimeModal = useDisclosure(false);
   const stremioCustomSourceModal = useDisclosure(false);
@@ -1446,6 +1507,11 @@ function Content() {
         ...service,
         credentials: {},
       })),
+      // Scripts commonly carry a swapped service credential.
+      variants: clonedData?.variants?.map((variant) => ({
+        ...variant,
+        script: '# [redacted] variant scripts may contain credentials',
+      })),
       proxy: {
         ...clonedData?.proxy,
         credentials: undefined,
@@ -1497,13 +1563,23 @@ function Content() {
     : uuidRegex.test(uuid)
       ? (profileAlias ?? null)
       : uuid;
+  const enabledVariants = (userData.variants ?? []).filter(
+    (variant) => variant.enabled !== false
+  );
+  const activeVariants = selectedVariants.filter((id) =>
+    enabledVariants.some((variant) => variant.id === id)
+  );
+  const variantQuery = activeVariants.length
+    ? `?v=${activeVariants.map(encodeURIComponent).join(',')}`
+    : '';
+
   const manifestUrl = !uuid
     ? ''
     : aliasForInstall
-      ? `${baseUrl}/stremio/u/${aliasForInstall}/manifest.json`
-      : `${baseUrl}/stremio/${uuid}/${encryptedPassword}/manifest.json`;
+      ? `${baseUrl}/stremio/u/${aliasForInstall}/manifest.json${variantQuery}`
+      : `${baseUrl}/stremio/${uuid}/${encryptedPassword}/manifest.json${variantQuery}`;
   const chillLinkUrl = uuid
-    ? `${baseUrl}/chilllink/${uuid}/${encryptedPassword}`
+    ? `${baseUrl}/chilllink/${uuid}/${encryptedPassword}${variantQuery}`
     : '';
   const encodedManifest = encodeURIComponent(manifestUrl);
 
@@ -1511,10 +1587,10 @@ function Content() {
     !!uuid && !!encryptedPassword && uuidRegex.test(uuid);
 
   const seanimePluginUrl = hasSeanimePersonalUrl
-    ? `${baseUrl}/seanime/${uuid}/${encryptedPassword}/extensions/aiostreams-plugin.json`
+    ? `${baseUrl}/seanime/${uuid}/${encryptedPassword}/extensions/aiostreams-plugin.json${variantQuery}`
     : `${baseUrl}/seanime/extensions/aiostreams-plugin.json`;
   const seanimeProviderUrl = hasSeanimePersonalUrl
-    ? `${baseUrl}/seanime/${uuid}/${encryptedPassword}/extensions/aiostreams-torrent-provider.json`
+    ? `${baseUrl}/seanime/${uuid}/${encryptedPassword}/extensions/aiostreams-torrent-provider.json${variantQuery}`
     : `${baseUrl}/seanime/extensions/aiostreams-torrent-provider.json`;
   const copyManifestUrl = async () => {
     await copyToClipboard(manifestUrl, {
@@ -1709,6 +1785,15 @@ function Content() {
               encodedManifest={encodedManifest}
               manifestUrl={manifestUrl}
               usingAlias={!!aliasForInstall}
+              variantSelector={
+                enabledVariants.length > 0 ? (
+                  <VariantSelector
+                    variants={enabledVariants}
+                    selected={activeVariants}
+                    onChange={setSelectedVariants}
+                  />
+                ) : undefined
+              }
               onCopyManifestUrl={copyManifestUrl}
               onOpenChillio={chillLinkModal.open}
               onOpenSeanime={seanimeModal.open}

@@ -74,6 +74,7 @@ type IgnoredKeys =
   | 'uuid'
   | 'encryptedPassword'
   | 'trusted'
+  | 'activeVariants'
   | 'addons'
   | 'proxies'
   | 'ip'
@@ -253,5 +254,6 @@ export const FIELD_META: Omit<Record<keyof UserData, FieldMeta>, IgnoredKeys> = 
   presets: { label: 'Addons', group: 'misc', type: 'list', identityKey: 'instanceId', menu: 'addons', subTab: 'addons', keywords: ['addons', 'presets'], ignoreForParentConfig: true },
   services: { label: 'Services', group: 'misc', type: 'list', identityKey: 'id', menu: 'services', subTab: 'services', ignoreForParentConfig: true },
   parentConfig: { label: 'Parent Config', group: 'misc', type: 'scalar', menu: 'miscellaneous', subTab: 'parent', sectionId: 'parentConfig', keywords: ['inherit', 'link', 'parent'], ignoreForParentConfig: true },
+  variants: { label: 'Variants', group: 'misc', type: 'list', identityKey: 'id', menu: 'miscellaneous', subTab: 'variants', sectionId: 'variants', keywords: ['variant', 'sub-profile', 'cel', 'config expression', 'override'], ignoreForParentConfig: true },
   groups: { label: 'Groups', group: 'misc', type: 'scalar', menu: 'addons', subTab: 'addons', keywords: ['groupings'], ignoreForParentConfig: true, sectionId: 'fetchStrategy' },
 };
