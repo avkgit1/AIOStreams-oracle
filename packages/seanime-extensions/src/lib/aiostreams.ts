@@ -244,7 +244,8 @@ class AIOStreamsAPI {
   constructor(
     baseUrl: string,
     private uuid: string,
-    private password: string
+    private password: string,
+    readonly variants: string[] = []
   ) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
   }
@@ -262,6 +263,10 @@ class AIOStreamsAPI {
         type,
         id: fullId,
         format: true,
+        // Comma separated in one param: the server only reads the first `v`.
+        [VARIANT_QUERY_PARAM]: this.variants.length
+          ? this.variants.join(',')
+          : undefined,
       },
     });
   }
@@ -391,11 +396,33 @@ class AIOStreamsAPI {
   }
 }
 
+/** Query parameter that selects config variants on AIOStreams URLs. */
+const VARIANT_QUERY_PARAM = 'v';
+
+function parseVariants(url: string): string[] {
+  const query = url.split('#')[0].split('?')[1];
+  if (!query) return [];
+
+  const ids: string[] = [];
+  for (const pair of query.split('&')) {
+    const separator = pair.indexOf('=');
+    if (separator === -1 || pair.slice(0, separator) !== VARIANT_QUERY_PARAM) {
+      continue;
+    }
+    for (const id of decodeURIComponent(pair.slice(separator + 1)).split(',')) {
+      const trimmed = id.trim().toLowerCase();
+      if (trimmed && ids.indexOf(trimmed) === -1) ids.push(trimmed);
+    }
+  }
+  return ids;
+}
+
 // supports manifest URLs in the format of <baseUrl>/stremio/<uuid>/<encryptedPassword>/manifest.json
 function parseManifestUrl(url: string): {
   baseUrl: string;
   uuid: string;
   encryptedPassword: string;
+  variants: string[];
 } {
   const clean = url.trim();
   if (!clean) throw new Error('Manifest URL is required');
@@ -438,7 +465,7 @@ function parseManifestUrl(url: string): {
   }
 
   const baseUrl = `${parsedUrl.protocol}//${parsedUrl.host}`;
-  return { baseUrl, uuid, encryptedPassword };
+  return { baseUrl, uuid, encryptedPassword, variants: parseVariants(clean) };
 }
 
 export {

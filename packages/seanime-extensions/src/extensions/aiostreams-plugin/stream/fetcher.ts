@@ -150,7 +150,8 @@ export class StreamFetcher {
     return new AIOStreamsAPI(
       creds.baseUrl,
       creds.uuid,
-      creds.encryptedPassword
+      creds.encryptedPassword,
+      creds.variants
     );
   }
 
@@ -227,7 +228,7 @@ export class StreamFetcher {
     }
 
     const lookup = buildLookup(originalId, parsedId, anime, mediaType);
-    const cacheKey = StreamCache.keyFor(parsedId);
+    const cacheKey = StreamCache.keyFor(parsedId, api.variants);
 
     const base = {
       episodeInfo,
