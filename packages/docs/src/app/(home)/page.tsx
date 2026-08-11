@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import {
   FaRocket,
@@ -12,6 +13,12 @@ import {
 import { Card, Cards } from 'fumadocs-ui/components/card';
 import { DonateButton } from '@/components/donate-button';
 import { getChangelogEntries } from '@/lib/source';
+import { canonical, sharedOpenGraph } from '@/lib/site';
+
+export const metadata: Metadata = {
+  alternates: { canonical: canonical('/') },
+  openGraph: { ...sharedOpenGraph, url: canonical('/') },
+};
 
 const SECTIONS: Array<{
   href: string;

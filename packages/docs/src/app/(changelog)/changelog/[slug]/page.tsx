@@ -10,6 +10,7 @@ import {
 } from 'fumadocs-ui/layouts/docs/page';
 import { getMDXComponents } from '@/mdx-components';
 import { changelogSource, formatChangelogDate } from '@/lib/source';
+import { canonical, sharedOpenGraph } from '@/lib/site';
 
 export default async function ChangelogEntryPage(
   props: PageProps<'/changelog/[slug]'>
@@ -79,8 +80,11 @@ export async function generateMetadata(
   return {
     title: page.data.title,
     description: page.data.description,
+    alternates: { canonical: canonical(page.url) },
     openGraph: {
+      ...sharedOpenGraph,
       type: 'article',
+      url: canonical(page.url),
       title: page.data.title,
       description: page.data.description,
       publishedTime: new Date(page.data.date).toISOString(),

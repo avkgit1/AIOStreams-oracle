@@ -7,10 +7,13 @@ import {
 } from 'fumadocs-ui/layouts/docs/page';
 import { Card, Cards } from 'fumadocs-ui/components/card';
 import { formatChangelogDate, getChangelogEntries } from '@/lib/source';
+import { canonical, sharedOpenGraph } from '@/lib/site';
 
 export const metadata: Metadata = {
   title: 'Changelog',
   description: 'Release notes for AIOStreams.',
+  alternates: { canonical: canonical('/changelog') },
+  openGraph: { ...sharedOpenGraph, url: canonical('/changelog') },
 };
 
 export default function ChangelogIndex() {
