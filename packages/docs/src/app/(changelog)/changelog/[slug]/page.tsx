@@ -1,7 +1,13 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { InlineTOC } from 'fumadocs-ui/components/inline-toc';
+import { ChevronRight } from 'lucide-react';
+import {
+  DocsBody,
+  DocsDescription,
+  DocsPage,
+  DocsTitle,
+} from 'fumadocs-ui/layouts/docs/page';
 import { getMDXComponents } from '@/mdx-components';
 import { changelogSource, formatChangelogDate } from '@/lib/source';
 
@@ -15,38 +21,41 @@ export default async function ChangelogEntryPage(
   const MDX = page.data.body;
 
   return (
-    <main className="flex flex-1 flex-col px-6 py-16">
-      <article className="mx-auto w-full max-w-3xl">
-        <Link
-          href="/changelog"
-          className="text-sm text-fd-muted-foreground hover:text-fd-foreground"
-        >
-          ← Changelog
-        </Link>
-        <h1 className="mt-4 text-3xl font-bold tracking-tight">
-          {page.data.title}
-        </h1>
-        {page.data.description ? (
-          <p className="mt-2 text-fd-muted-foreground">
-            {page.data.description}
-          </p>
-        ) : null}
-        <div className="mt-4 flex flex-wrap items-center gap-2 border-b border-fd-border pb-6 text-xs text-fd-muted-foreground">
-          <span className="rounded-full border border-fd-border bg-fd-muted/50 px-2 py-0.5 font-medium">
-            {page.data.version ?? slug}
-          </span>
-          <time dateTime={new Date(page.data.date).toISOString()}>
-            {formatChangelogDate(page.data.date)}
-          </time>
-        </div>
-        {page.data.toc.length > 0 ? (
-          <InlineTOC items={page.data.toc} defaultOpen className="mt-8" />
-        ) : null}
-        <div className="prose mt-8">
-          <MDX components={getMDXComponents()} />
-        </div>
-      </article>
-    </main>
+    <DocsPage
+      toc={page.data.toc}
+      breadcrumb={{
+        component: (
+          <div className="flex items-center gap-1.5 text-sm text-fd-muted-foreground">
+            <Link
+              href="/changelog"
+              className="transition-opacity hover:opacity-80"
+            >
+              Changelog
+            </Link>
+            <ChevronRight className="size-3.5 shrink-0" />
+            <span className="truncate font-medium text-fd-primary">
+              {page.data.title}
+            </span>
+          </div>
+        ),
+      }}
+    >
+      <DocsTitle>{page.data.title}</DocsTitle>
+      <DocsDescription className="mb-0">
+        {page.data.description}
+      </DocsDescription>
+      <div className="flex flex-wrap items-center gap-2 border-b pb-6 text-xs text-fd-muted-foreground">
+        <span className="rounded-full border border-fd-border bg-fd-muted/50 px-2 py-0.5 font-medium">
+          {page.data.version ?? slug}
+        </span>
+        <time dateTime={new Date(page.data.date).toISOString()}>
+          {formatChangelogDate(page.data.date)}
+        </time>
+      </div>
+      <DocsBody>
+        <MDX components={getMDXComponents()} />
+      </DocsBody>
+    </DocsPage>
   );
 }
 
