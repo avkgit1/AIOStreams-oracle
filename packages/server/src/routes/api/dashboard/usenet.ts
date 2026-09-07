@@ -5,10 +5,9 @@ import {
   formatZodError,
   getUsenetStatsOverview,
   getUsenetLiveStats,
+  resetUsenetStats,
   getUsenetProviders,
   saveUsenetProviders,
-  getUsenetSettings,
-  saveUsenetSettings,
   PERFORMANCE_PROFILES,
   testUsenetProvider,
   runProviderSpeedTest,
@@ -22,8 +21,10 @@ import {
   blocklistEvalOptions,
   nzbContentKey,
   type UsenetStatsWindow,
+  type UsenetStatsResetTarget,
   type UsenetLibraryStatusGroup,
   type UsenetLibraryStatus,
+  type UsenetLibraryOrigin,
   type UsenetLibrarySort,
   type UsenetLibrarySortDir,
 } from '@aiostreams/core';
@@ -39,6 +40,11 @@ const router: Router = Router();
 const logger = createLogger('dashboard:usenet');
 
 const WINDOWS: UsenetStatsWindow[] = ['24h', '7d', '30d', 'all'];
+const RESET_TARGETS: UsenetStatsResetTarget[] = [
+  'providers',
+  'indexers',
+  'all',
+];
 const STATUS_GROUPS: UsenetLibraryStatusGroup[] = ['active', 'history', 'all'];
 const LIBRARY_STATUSES: UsenetLibraryStatus[] = [
   'queued',
@@ -55,6 +61,11 @@ const LIBRARY_SORTS: UsenetLibrarySort[] = [
   'size',
 ];
 const LIBRARY_SORT_DIRS: UsenetLibrarySortDir[] = ['asc', 'desc'];
+const LIBRARY_ORIGINS: UsenetLibraryOrigin[] = [
+  'playback',
+  'dashboard',
+  'sabnzbd',
+];
 
 function username(req: { user?: { username?: string } }): string {
   return req.user?.username ?? 'admin';
@@ -67,6 +78,64 @@ router.get('/stats', async (req, res, next) => {
     const window = WINDOWS.includes(w) ? w : '24h';
     const overview = await getUsenetStatsOverview(window);
     res.status(200).json(createResponse({ success: true, data: overview }));
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** A dry run deletes nothing, so it does not need confirming. */
+function confirmed(body: Record<string, unknown>): boolean {
+  return body.confirm === true || body.dryRun === true;
+}
+
+function confirmationRequired(res: Response): void {
+  res.status(400).json(
+    createResponse({
+      success: false,
+      error: {
+        code: 'CONFIRMATION_REQUIRED',
+        message: 'Resetting stats is destructive and requires confirmation.',
+      },
+    })
+  );
+}
+
+function finiteOrUndefined(v: unknown): number | undefined {
+  if ((typeof v !== 'number' && typeof v !== 'string') || v === '') {
+    return undefined;
+  }
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+// POST /dashboard/usenet/stats/reset: drop recorded rollups for one provider
+// or indexer (or all of them), optionally limited to an hour range.
+router.post('/stats/reset', async (req, res, next) => {
+  try {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const target = body.target as UsenetStatsResetTarget;
+    if (!RESET_TARGETS.includes(target)) {
+      return res.status(400).json(
+        createResponse({
+          success: false,
+          error: {
+            code: 'BAD_REQUEST',
+            message: `target must be one of ${RESET_TARGETS.join(', ')}`,
+          },
+        })
+      );
+    }
+    if (!confirmed(body)) return confirmationRequired(res);
+    const dryRun = body.dryRun === true;
+    const result = await resetUsenetStats({
+      target,
+      id: typeof body.id === 'string' && body.id ? body.id : undefined,
+      sinceMs: finiteOrUndefined(body.sinceMs),
+      untilMs: finiteOrUndefined(body.untilMs),
+      dryRun,
+      username: username(req),
+    });
+    res.status(200).json(createResponse({ success: true, data: result }));
   } catch (err) {
     next(err);
   }
@@ -174,42 +243,13 @@ router.put('/providers', async (req, res) => {
   }
 });
 
-// GET /dashboard/usenet/settings — engine settings (incl. hidden) + values.
+// GET /dashboard/usenet/settings — the performance-profile catalogue.
 router.get('/settings', (_req, res, next) => {
   try {
     res.status(200).json(
       createResponse({
         success: true,
-        data: { keys: getUsenetSettings(), profiles: PERFORMANCE_PROFILES },
-      })
-    );
-  } catch (err) {
-    next(err);
-  }
-});
-
-// PATCH /dashboard/usenet/settings — { [dottedKey]: value } (changed keys only).
-router.patch('/settings', async (req, res, next) => {
-  try {
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const { updated, requiresRestart, errors } = await saveUsenetSettings(
-      body,
-      username(req)
-    );
-    const ok = Object.keys(errors).length === 0;
-    res.status(ok ? 200 : 422).json(
-      createResponse({
-        success: ok,
-        data: { updated, requiresRestart },
-        ...(ok
-          ? {}
-          : {
-              error: {
-                code: 'VALIDATION_ERROR',
-                message: 'Some settings could not be saved',
-                issues: errors,
-              },
-            }),
+        data: { profiles: PERFORMANCE_PROFILES },
       })
     );
   } catch (err) {
@@ -325,6 +365,13 @@ router.get('/library', async (req, res, next) => {
     const sort = LIBRARY_SORTS.includes(sortParam) ? sortParam : undefined;
     const dirParam = String(req.query.dir ?? '') as UsenetLibrarySortDir;
     const dir = LIBRARY_SORT_DIRS.includes(dirParam) ? dirParam : undefined;
+    // Optional origin filter (CSV), e.g. ?origin=sabnzbd.
+    const origins = String(req.query.origin ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s): s is UsenetLibraryOrigin =>
+        LIBRARY_ORIGINS.includes(s as UsenetLibraryOrigin)
+      );
     const data = await UsenetLibraryRepository.list({
       limit: Number.isFinite(limit) ? limit : 50,
       offset: Number.isFinite(offset) ? offset : 0,
@@ -333,6 +380,7 @@ router.get('/library', async (req, res, next) => {
       search: search || undefined,
       sort,
       dir,
+      origins,
     });
     res.status(200).json(
       createResponse({

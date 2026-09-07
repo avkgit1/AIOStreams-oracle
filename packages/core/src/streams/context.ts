@@ -17,6 +17,7 @@ import {
   isNonAnimeAbsoluteEligible,
 } from '../builtins/utils/general.js';
 import { iso6391ToLanguage } from '../utils/languages.js';
+import { config as appConfig } from '../config/index.js';
 
 const logger = createLogger('stream-context');
 
@@ -57,6 +58,8 @@ export interface ExpressionContext {
   malId?: number;
   // SeaDex availability
   hasSeaDex?: boolean;
+  /** Health check results for this request, backing `health('<id>')`. */
+  health?: Record<string, boolean>;
 }
 /**
  * StreamContext encapsulates all request-specific data that can be shared
@@ -658,6 +661,8 @@ export class StreamContext {
 
     return {
       userData: this.userData,
+      addonName: appConfig.branding.addonName,
+      onWarning: (message) => logger.warn(message),
       type: this.type,
       isAnime: this.isAnime,
       queryType: this.queryType,
@@ -737,6 +742,7 @@ export class StreamContext {
       hasSeaDex: !!(
         this._seadex?.allHashes?.size || this._seadex?.allGroups?.size
       ),
+      health: this.userData.healthResults,
     };
   }
 }

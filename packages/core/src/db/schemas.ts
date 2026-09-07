@@ -91,13 +91,14 @@ export type SortCriterion = z.infer<typeof SortCriterion>;
 const StreamTypes = z.enum(constants.STREAM_TYPES);
 const Languages = z.enum(constants.LANGUAGES);
 
-const FormatterTemplateShape = z.object({
+export const FormatterTemplateShape = z.object({
   name: formatterTemplate(),
   description: formatterTemplate(),
 });
 
 const Formatter = z.object({
   id: z.enum(constants.FORMATTERS),
+  selectedSaved: z.string().optional(),
   definitions: z
     .object({
       custom: FormatterTemplateShape.optional(),
@@ -465,9 +466,70 @@ export const VariantSchema = z.object({
   name: z.string().min(1).max(64).optional(),
   enabled: z.boolean().optional(),
   script: variantScript(),
+  /**
+   * Boolean stream expression. When it matches, the variant applies without
+   * being named in the URL. An explicit selector applies either way.
+   */
+  when: streamExpressionOptional().optional(),
 });
 
 export type Variant = z.infer<typeof VariantSchema>;
+
+/**
+ * What counts as a healthy response. Rules are combined with AND; an empty
+ * object means "any 2xx".
+ */
+export const HealthCheckExpectSchema = z.object({
+  /** `200`, `2xx` or `200-299`. Defaults to `2xx`. */
+  status: z
+    .string()
+    .regex(
+      /^(\d{3}|\dxx|\d{3}-\d{3})$/,
+      'Expected status must be a code (200), a class (2xx) or a range (200-299).'
+    )
+    .optional(),
+  /**
+   * Plain case-insensitive substring rather than a pattern: a health check runs
+   * this against a remote body the author also chooses, and a regex there is a
+   * ready-made way to hang the event loop.
+   */
+  bodyContains: z.string().min(1).max(200).optional(),
+  /** Dotted path into a JSON body, e.g. `services.realdebrid[0].up`. */
+  jsonPath: z
+    .string()
+    .regex(
+      /^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*|\[\d+\])*$/,
+      'JSON path must be dotted keys with optional [n] indexes, e.g. "data.status".'
+    )
+    .max(200)
+    .optional(),
+  /** Compared to the value at `jsonPath`. Omit to require any truthy value. */
+  jsonValue: z.union([z.string(), z.number(), z.boolean()]).optional(),
+});
+
+export type HealthCheckExpect = z.infer<typeof HealthCheckExpectSchema>;
+
+export const HealthCheckSchema = z.object({
+  // Referenced from expressions as health('<id>').
+  id: z
+    .string()
+    .regex(
+      /^[a-z0-9][a-z0-9_-]{0,31}$/,
+      'Health check id must be 1-32 characters: lowercase letters, digits, "-" or "_", starting with a letter or digit.'
+    ),
+  name: z.string().min(1).max(64).optional(),
+  url: z.string().url().max(2048),
+  method: z.enum(['GET', 'HEAD']).optional(),
+  expect: HealthCheckExpectSchema.optional(),
+  /** Seconds a result is considered fresh. Clamped to the operator minimum. */
+  ttl: z.number().int().positive().optional(),
+  /** Milliseconds. Clamped to the operator maximum. */
+  timeout: z.number().int().positive().optional(),
+  /** Result when the check itself fails (timeout, DNS, refused URL). */
+  onError: z.enum(['unhealthy', 'healthy']).optional(),
+});
+
+export type HealthCheck = z.infer<typeof HealthCheckSchema>;
 
 export const VariantSelectorLocationSchema = z.enum(['query', 'path']);
 export type VariantSelectorLocation = z.infer<
@@ -518,13 +580,40 @@ export const UserDataSchema = z.object({
       }
     })
     .optional(),
+  healthChecks: z
+    .array(HealthCheckSchema)
+    .superRefine((checks, ctx) => {
+      const seen = new Set<string>();
+      for (const check of checks) {
+        if (seen.has(check.id)) {
+          ctx.addIssue({
+            code: 'custom',
+            message: `Duplicate health check id "${check.id}".`,
+          });
+        }
+        seen.add(check.id);
+      }
+    })
+    .optional(),
   /** Request scoped: the variant ids applied to this instance. Never persisted. */
   activeVariants: z.array(z.string()).optional(),
+  /** Request scoped: variant ids activated by their own `when`. Never persisted. */
+  autoVariants: z.array(z.string()).optional(),
+  /** Request scoped: every health check resolved once for this request. Never persisted. */
+  healthResults: z.record(z.string(), z.boolean()).optional(),
   /** Request scoped: where the selector sat in the URL. Never persisted. */
   variantSelectorLocation: VariantSelectorLocationSchema.optional(),
   encryptedPassword: z.string().min(1).optional(),
   trusted: z.boolean().optional(),
   showChanges: z.boolean().optional(),
+  /** How often the manifest change notice appears after a save. */
+  manifestNotice: z.enum(['always', 'significant', 'never']).optional(),
+  /** Preferences only. The credentials themselves live in `linked_accounts`. */
+  linkedAccounts: z
+    .object({
+      pushBehaviour: z.enum(['ask', 'auto', 'never']).optional(),
+    })
+    .optional(),
   accessKey: z.string().optional(),
   ip: z.string().optional(),
   addonName: z.string().min(1).max(300).optional(),
@@ -733,6 +822,9 @@ export const UserDataSchema = z.object({
         )
         .optional(),
       behaviour: z.enum(['sequential', 'parallel']).optional(),
+      onConditionFailure: z
+        .enum(['stop', 'skip', 'includeFinished'])
+        .optional(),
     })
     .optional(),
   sortCriteria: z.object({
@@ -1087,6 +1179,7 @@ export const ParsedFileSchema = z.object({
   audioChannels: z.array(z.string()),
   visualTags: z.array(z.string()),
   audioTags: z.array(z.string()),
+  mediaInfoQuality: z.enum(['probe', 'indexer', 'addon']).optional(),
   languages: z.array(z.string()),
   subtitles: z.array(z.string()).optional(),
   subbed: z.boolean().optional(),
@@ -1480,6 +1573,11 @@ const StatusResponseSchema = z.object({
     featuredTemplateIds: z.array(z.string()).optional(),
     alternateDesign: z.boolean(),
     protected: z.boolean(),
+    community: z.object({
+      formatters: z.enum(['off', 'open', 'approval']),
+      templates: z.enum(['off', 'open', 'approval']),
+      minAccountAge: z.number(),
+    }),
     oidc: z.object({
       enabled: z.boolean(),
       buttonLabel: z.string(),
@@ -1506,15 +1604,28 @@ const StatusResponseSchema = z.object({
       maxPathSegments: z.number(),
       maxPathMatches: z.number(),
     }),
+    healthChecks: z.object({
+      access: z.enum(['none', 'trusted', 'all']),
+      max: z.number(),
+      minTtl: z.number(),
+      maxTimeout: z.number(),
+      maxBytes: z.number(),
+      allowPrivateUrls: z.boolean(),
+    }),
     loggingSensitiveInfo: z.boolean(),
     searchApiDisabled: z.boolean(),
     nabApiDisabled: z.boolean(),
     seanimeExtensionVersion: z.string().nullable(),
-    tmdbApiAvailable: z.boolean(),
+    metadata: z.object({
+      tmdb: z.object({ accessToken: z.boolean(), apiKey: z.boolean() }),
+      tvdb: z.object({ apiKey: z.boolean() }),
+    }),
     /** Global analytics master switch (false = no events written anywhere). */
     analyticsEnabled: z.boolean(),
     /** Per-user analytics (configure-page Stats tab) enabled state. */
     userAnalyticsEnabled: z.boolean(),
+    /** Whether "stay signed in" is offered when loading a configuration. */
+    configSessionsEnabled: z.boolean(),
     forced: z.object({
       proxy: z.object({
         enabled: z.boolean().or(z.null()),
@@ -1603,7 +1714,7 @@ export const TemplateSchema = z.object({
     description: z.string().min(1).max(1000), // description of the template
     author: z.string().min(1).max(20), // author of the template
     source: z
-      .enum(['builtin', 'custom', 'external'])
+      .enum(['builtin', 'custom', 'external', 'community'])
       .optional()
       .default('builtin'),
     version: z
@@ -1611,6 +1722,7 @@ export const TemplateSchema = z.object({
       .optional()
       .default('1.0.0'),
     category: z.string().min(1).max(20), // category of the template
+    tags: z.array(z.string().min(1).max(20)).max(5).optional(), // multi-tag; `category` stays as the single-tag fallback
     services: z.array(ServiceIds).optional(),
     serviceRequired: z.boolean().optional(), // whether a service is required for this template or not.
     setToSaveInstallMenu: z.boolean().optional().default(true), // whether to set the menu to save-install after importing the template

@@ -1,4 +1,4 @@
-import { Readable, addAbortSignal } from 'node:stream';
+import { Readable } from 'node:stream';
 import { createHash } from 'node:crypto';
 import { createLogger } from '../../logging/logger.js';
 import { DebridError } from '../../debrid/base.js';
@@ -49,7 +49,14 @@ import {
 } from '../../stream-sessions/index.js';
 import { usenetEngineRegistry, getUsenetEngineConfig } from './engine.js';
 import { fetchNzb, parseNzbCached, canonicaliseNzbHash } from './library.js';
+import {
+  indexerLabelFor,
+  recordGrabOutcome,
+  grabHttpStatus,
+  grabErrorMessage,
+} from './grab-metrics.js';
 import { noteStreamActivity, pruneStreamActivity } from './damage-policy.js';
+import { condemnArrDownload } from './arr-bridge.js';
 
 const logger = createLogger('usenet/stream');
 
@@ -76,7 +83,10 @@ export interface OpenedUsenetStream {
 const USENET_LAST_MODIFIED = new Date('2024-01-01T00:00:00Z');
 
 /** Strong, stable ETag for a resolved stream at a known size. */
-function streamEtag(token: UsenetStreamToken, size: number): string {
+export function usenetStreamEtag(
+  token: UsenetStreamToken,
+  size: number
+): string {
   const digest = createHash('sha1')
     .update(streamSessionKey(token))
     .digest('hex')
@@ -341,6 +351,7 @@ function holeHooksFor(
     ).catch(() => {});
     // Pad caps only trip on damage confirmed against every provider.
     markReleaseDead(decoded.releaseKey, nzbContentKey(hash));
+    condemnArrDownload(hash, 'failed');
     // Drop the warm session so a player retry re-opens fresh and sees the
     // failed entry.
     streamSessions.delete(sessionKey);
@@ -443,7 +454,21 @@ async function getStreamSession(
     // disconnect mid-open must not poison it for everyone (segment timeouts
     // still bound the work). Phase timings (grab/parse/open) are logged so a
     // cold-start slowdown can be attributed.
-    const xml = await fetchNzb(decoded.nzb);
+    let xml: Buffer;
+    try {
+      xml = await fetchNzb(decoded.nzb);
+    } catch (err) {
+      // Failures only: a byte-path grab usually hits the
+      // grab cache, so counting successes would inflate the denominator.
+      recordGrabOutcome({
+        indexer: indexerLabelFor(decoded.indexer, decoded.nzb),
+        outcome: 'failed',
+        errorCode: 'nzb_fetch_failed',
+        httpStatus: grabHttpStatus(err),
+        errorMessage: grabErrorMessage(err),
+      });
+      throw err;
+    }
     const grabbedAt = Date.now();
     // Reuses the model the resolve just parsed (same hash); parsing the same
     // multi-MB NZB twice per playback is pure waste.
@@ -545,6 +570,7 @@ async function getStreamSession(
           decoded.filename,
           friendly.code
         ).catch(() => {});
+        condemnArrDownload(hash, 'failed');
         // The release exists on usenet, but a compressed/solid/unsupported
         // archive is un-streamable for everyone (global); an all-provider
         // article miss is backbone-scoped evidence.
@@ -606,14 +632,21 @@ async function getStreamSession(
  * {@link Readable} for the requested half-open byte range `[start, end)`. The
  * server route handles HTTP concerns (Range parsing, headers).
  */
-export async function openNativeUsenetStream(opts: {
-  token: string;
+export interface OpenUsenetStreamOptions {
   start?: number;
   end?: number;
+  /** Serve the last N bytes (`bytes=-N`); overrides start/end. */
+  suffixLength?: number;
   signal?: AbortSignal;
   /** Client address, for stream accounting. */
   clientIp?: string;
-}): Promise<OpenedUsenetStream> {
+  /** Opened through the share tree (FUSE/NFS/WebDAV): no connection caps. */
+  share?: boolean;
+}
+
+export async function openNativeUsenetStream(
+  opts: OpenUsenetStreamOptions & { token: string }
+): Promise<OpenedUsenetStream> {
   opts.signal?.throwIfAborted();
   const decoded = decodeUsenetStreamToken(opts.token);
   if (!decoded) {
@@ -626,7 +659,18 @@ export async function openNativeUsenetStream(opts: {
       type: 'api_error',
     });
   }
+  return openUsenetStream(decoded, opts);
+}
 
+/**
+ * Open a stream for an already-decoded token. In-process callers (the WebDAV
+ * provider) build the token themselves and skip the encrypted round trip.
+ */
+export async function openUsenetStream(
+  decoded: UsenetStreamToken,
+  opts: OpenUsenetStreamOptions = {}
+): Promise<OpenedUsenetStream> {
+  opts.signal?.throwIfAborted();
   const { providers, options } = getUsenetEngineConfig();
   if (providers.length === 0) {
     throw new DebridError('no usenet providers are configured', {
@@ -658,6 +702,7 @@ export async function openNativeUsenetStream(opts: {
   const admitted = streamRegistry.open({
     transport: 'usenet',
     username: decoded.owner ?? '',
+    share: opts.share,
     clientIp: opts.clientIp,
     targetKey: usenetTargetKey(
       decoded.hash,
@@ -708,11 +753,16 @@ export async function openNativeUsenetStream(opts: {
     throw err;
   }
   const { size, filename } = session;
-  const start = Math.max(0, opts.start ?? 0);
-  const end = Math.min(size, opts.end ?? size);
-  handle.setInfo({ size, filename });
+  const suffix = opts.suffixLength;
+  const start =
+    suffix !== undefined
+      ? Math.max(0, size - suffix)
+      : Math.max(0, opts.start ?? 0);
+  const end = suffix !== undefined ? size : Math.min(size, opts.end ?? size);
+  // A suffix range's position is only known now that the size is.
+  handle.setInfo({ size, filename, start });
 
-  let stream = session.stream.createReadStream({ start, end });
+  let stream = session.stream.createReadStream({ start, end }, opts.signal);
   if (session.matroska && appConfig.usenet.matroskaHoleFill) {
     stream = wrapMatroskaHoleFill(stream, {
       startOffset: start,
@@ -722,7 +772,6 @@ export async function openNativeUsenetStream(opts: {
       nzbHash: session.hash,
     });
   }
-  if (opts.signal) addAbortSignal(opts.signal, stream);
   // Intercept push rather than listening for 'data', which would flip the
   // stream into flowing mode before the response attaches and lose chunks.
   const push = stream.push.bind(stream);
@@ -749,7 +798,7 @@ export async function openNativeUsenetStream(opts: {
     start,
     end,
     filename,
-    etag: streamEtag(decoded, size),
+    etag: usenetStreamEtag(decoded, size),
     lastModified: session.lastModified,
   };
 }

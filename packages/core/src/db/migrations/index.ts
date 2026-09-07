@@ -20,6 +20,11 @@ import { configProfiles } from './0019_config_profiles.js';
 import { animeDatabase } from './0020_anime_database.js';
 import { analyticsIndexes } from './0021_analytics_indexes.js';
 import { animeBuildSources } from './0022_anime_build_sources.js';
+import { linkedAccounts } from './0023_linked_accounts.js';
+import { community } from './0024_community.js';
+import { configSessions } from './0025_config_sessions.js';
+import { usenetLibraryArr } from './0026_usenet_library_arr.js';
+import { usenetUndecodable } from './0027_usenet_undecodable.js';
 import type { Migration } from './types.js';
 
 export const MIGRATIONS: readonly Migration[] = [
@@ -45,6 +50,11 @@ export const MIGRATIONS: readonly Migration[] = [
   animeDatabase,
   analyticsIndexes,
   animeBuildSources,
+  linkedAccounts,
+  community,
+  configSessions,
+  usenetLibraryArr,
+  usenetUndecodable,
 ];
 
 export type { Migration } from './types.js';

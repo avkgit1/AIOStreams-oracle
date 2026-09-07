@@ -21,9 +21,9 @@ export interface NzbContentFile {
   streamable: boolean;
   /**
    * Set when the file's content could not be inspected. `decode_failed` means
-   * the article arrived but is not decodable yEnc (broken part headers,
-   * uuencode-era posts); distinguished so the verdict can say "unsupported
-   * encoding" instead of a generic failure.
+   * the article arrived but could not be decoded (a corrupt copy failing its
+   * checksum or size, broken part headers, uuencode-era posts); distinguished
+   * so the verdict can say "cannot be decoded" instead of a generic failure.
    */
   error?: 'article_not_found' | 'open_failed' | 'decode_failed';
   /** Inner files when this is the representative member of an archive set. */
