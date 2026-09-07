@@ -1,11 +1,35 @@
 services:
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: gluetun
+    restart: unless-stopped
+
+    cap_add:
+      - NET_ADMIN
+
+    devices:
+      - /dev/net/tun:/dev/net/tun
+
+    volumes:
+      - /opt/gluetun/wireguard/wg0.conf:/gluetun/wireguard/wg0.conf:ro
+
+    environment:
+      VPN_SERVICE_PROVIDER: custom
+      VPN_TYPE: wireguard
+
+    ports:
+      - "${PORT:-3000}:3000"
+
   aiostreams:
     image: ghcr.io/viren070/aiostreams:latest
     container_name: aiostreams
     restart: unless-stopped
 
-    ports:
-      - "${PORT:-3000}:3000"
+    network_mode: "service:gluetun"
+
+    depends_on:
+      gluetun:
+        condition: service_healthy
 
     environment:
       BASE_URL: ${BASE_URL}
