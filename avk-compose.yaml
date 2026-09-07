@@ -16,20 +16,23 @@ services:
     environment:
       VPN_SERVICE_PROVIDER: custom
       VPN_TYPE: wireguard
+      HTTPPROXY: on
+      HTTPPROXY_STEALTH: on
 
     ports:
-      - "${PORT:-3000}:3000"
+      - "8888:8888"
 
   aiostreams:
     image: ghcr.io/viren070/aiostreams:latest
     container_name: aiostreams
     restart: unless-stopped
 
-    network_mode: "service:gluetun"
-
     depends_on:
       gluetun:
         condition: service_healthy
+
+    ports:
+      - "${PORT:-3000}:3000"
 
     environment:
       BASE_URL: ${BASE_URL}
@@ -37,6 +40,10 @@ services:
       DATABASE_URI: ${DATABASE_URI}
       AIOSTREAMS_AUTH: ${AIOSTREAMS_AUTH}
       TRUSTED_UUIDS: ${TRUSTED_UUIDS}
+
+      # Send upstream addon requests through Proton VPN
+      ADDON_PROXY: http://gluetun:8888
+      ADDON_PROXY_CONFIG: "*:false,*.strem.fun:true"
 
     volumes:
       - aiostreams_data:/app/data
